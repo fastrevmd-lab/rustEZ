@@ -115,7 +115,7 @@ fn build_load_xml(payload: &ConfigPayload) -> String {
         }
         ConfigPayload::Set(set_cmds) => {
             format!(
-                r#"<load-configuration format="set"><configuration-set>{set_cmds}</configuration-set></load-configuration>"#
+                r#"<load-configuration action="set" format="text"><configuration-set>{set_cmds}</configuration-set></load-configuration>"#
             )
         }
     }
@@ -158,7 +158,8 @@ mod tests {
     fn test_build_load_xml_set_payload() {
         let payload = ConfigPayload::Set("set system host-name test".to_string());
         let xml = build_load_xml(&payload);
-        assert!(xml.contains(r#"format="set""#));
+        assert!(xml.contains(r#"action="set""#));
+        assert!(xml.contains(r#"format="text""#));
         assert!(xml.contains("<configuration-set>set system host-name test</configuration-set>"));
     }
 

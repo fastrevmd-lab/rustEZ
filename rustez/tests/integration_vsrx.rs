@@ -2,32 +2,49 @@
 //!
 //! All tests are `#[ignore]` by default. Run with:
 //! ```sh
-//! RUSTEZ_VSRX_HOST=10.x.x.x RUSTEZ_VSRX_USER=admin RUSTEZ_VSRX_PASS=secret \
+//! RUSTEZ_VSRX_HOST=192.168.1.226 RUSTEZ_VSRX_USER=rustnetconf \
+//!     RUSTEZ_VSRX_KEY=~/.ssh/rustnetconf_test \
 //!     cargo test -p rustez -- --ignored
 //! ```
 
 use std::env;
 use std::time::Duration;
 
-use rustez::{ConfigPayload, Device};
+use rustez::{ConfigPayload, Device, DeviceBuilder};
+use serial_test::serial;
 
-/// Get connection params from environment, or skip the test.
-fn vsrx_params() -> (String, String, String) {
+/// Build a DeviceBuilder from environment variables.
+///
+/// Supports both key-based auth (RUSTEZ_VSRX_KEY) and password auth (RUSTEZ_VSRX_PASS).
+fn vsrx_builder() -> DeviceBuilder {
     let host = env::var("RUSTEZ_VSRX_HOST").expect("RUSTEZ_VSRX_HOST not set");
     let user = env::var("RUSTEZ_VSRX_USER").unwrap_or_else(|_| "admin".to_string());
-    let pass = env::var("RUSTEZ_VSRX_PASS").unwrap_or_else(|_| "admin123".to_string());
-    (host, user, pass)
+
+    let mut builder = Device::connect(&host).username(&user);
+
+    if let Ok(key_path) = env::var("RUSTEZ_VSRX_KEY") {
+        // Expand ~ to home directory
+        let expanded = if key_path.starts_with('~') {
+            let home = env::var("HOME").expect("HOME not set");
+            key_path.replacen('~', &home, 1)
+        } else {
+            key_path
+        };
+        builder = builder.key_file(&expanded);
+    } else {
+        let pass = env::var("RUSTEZ_VSRX_PASS").unwrap_or_else(|_| "admin123".to_string());
+        builder = builder.password(&pass);
+    }
+
+    builder
 }
 
 /// IT1: Connect, gather facts, verify hostname/model/version/serial.
 #[tokio::test]
 #[ignore]
+#[serial]
 async fn test_connect_and_gather_facts() {
-    let (host, user, pass) = vsrx_params();
-
-    let mut dev = Device::connect(&host)
-        .username(&user)
-        .password(&pass)
+    let mut dev = vsrx_builder()
         .rpc_timeout(Duration::from_secs(60))
         .open()
         .await
@@ -53,12 +70,9 @@ async fn test_connect_and_gather_facts() {
 /// IT2: Run `show interfaces terse` via cli(), verify non-empty output.
 #[tokio::test]
 #[ignore]
+#[serial]
 async fn test_cli_show_interfaces() {
-    let (host, user, pass) = vsrx_params();
-
-    let mut dev = Device::connect(&host)
-        .username(&user)
-        .password(&pass)
+    let mut dev = vsrx_builder()
         .no_facts()
         .open()
         .await
@@ -78,12 +92,9 @@ async fn test_cli_show_interfaces() {
 /// IT3: Lock → load set config → diff → commit → unlock → verify change.
 #[tokio::test]
 #[ignore]
+#[serial]
 async fn test_config_load_and_commit() {
-    let (host, user, pass) = vsrx_params();
-
-    let mut dev = Device::connect(&host)
-        .username(&user)
-        .password(&pass)
+    let mut dev = vsrx_builder()
         .no_facts()
         .rpc_timeout(Duration::from_secs(60))
         .open()
@@ -94,8 +105,13 @@ async fn test_config_load_and_commit() {
 
     cfg.lock().await.expect("lock failed");
 
-    let payload = ConfigPayload::Set(
-        "set system description \"rustEZ integration test\"".to_string(),
+    // Use a unique hostname to ensure there's always a diff
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let payload = ConfigPayload::Text(
+        format!("system {{ host-name rustez-it3-{timestamp}; }}"),
     );
     cfg.load(payload).await.expect("load failed");
 
@@ -112,12 +128,9 @@ async fn test_config_load_and_commit() {
 /// IT4: Rollback after config change.
 #[tokio::test]
 #[ignore]
+#[serial]
 async fn test_config_rollback() {
-    let (host, user, pass) = vsrx_params();
-
-    let mut dev = Device::connect(&host)
-        .username(&user)
-        .password(&pass)
+    let mut dev = vsrx_builder()
         .no_facts()
         .rpc_timeout(Duration::from_secs(60))
         .open()
@@ -128,9 +141,13 @@ async fn test_config_rollback() {
 
     cfg.lock().await.expect("lock failed");
 
-    // Load a change
-    let payload = ConfigPayload::Set(
-        "set system description \"rollback test\"".to_string(),
+    // Load a change with unique value
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let payload = ConfigPayload::Text(
+        format!("system {{ host-name rustez-it4-{timestamp}; }}"),
     );
     cfg.load(payload).await.expect("load failed");
     cfg.commit().await.expect("commit failed");
