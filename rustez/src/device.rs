@@ -179,7 +179,9 @@ impl DeviceBuilder {
         let rpc_timeout = self.rpc_timeout.unwrap_or(DEFAULT_RPC_TIMEOUT);
 
         let facts_cache = if self.gather_facts {
-            Some(facts::gather_facts(&mut client, rpc_timeout).await?)
+            let gathered = facts::gather_facts(&mut client, rpc_timeout).await?;
+            log_session_limit_warning(&gathered.personality);
+            Some(gathered)
         } else {
             None
         };
@@ -189,6 +191,21 @@ impl DeviceBuilder {
             facts_cache,
             rpc_timeout,
         })
+    }
+}
+
+/// Log a warning for platforms with low NETCONF session limits.
+fn log_session_limit_warning(personality: &facts::Personality) {
+    match personality {
+        facts::Personality::Srx | facts::Personality::Vsrx => {
+            tracing::warn!(
+                platform = %personality,
+                max_sessions = 3,
+                "this platform limits concurrent NETCONF sessions to 3 — \
+                 exceeding this will cause connection resets"
+            );
+        }
+        _ => {}
     }
 }
 

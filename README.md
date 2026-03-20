@@ -65,6 +65,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Platform Session Limits
+
+Some Junos platforms limit the number of concurrent NETCONF sessions. Exceeding
+the limit causes connection resets.
+
+| Platform | Max Concurrent Sessions |
+|----------|------------------------|
+| vSRX | 3 |
+| SRX (branch) | 3 |
+| MX / EX / QFX | 8+ (varies by model) |
+
+When automating multiple operations against the same device, keep your
+concurrent connections within these limits. The v0.3 `DevicePool` will
+auto-detect platform personality and enforce the correct ceiling
+automatically.
+
 ## Quick Start (CLI)
 
 ```bash
@@ -96,7 +112,7 @@ async def main():
 |-------|---------|-------|
 | 1 | v0.1 | Device, Facts, RPC, Config (load/diff/commit/rollback) |
 | 2 | v0.2 | Typed operational data (interfaces, routes, ARP, LLDP), CLI |
-| 3 | v0.3 | Software management, filesystem, shell, SCP |
+| 3 | v0.3 | Software management, filesystem, shell, SCP, DevicePool with per-platform session limits |
 | 4 | v0.4 | Python bindings via PyO3 |
 | 5 | v1.0 | YANG codegen, TUI, config drift detection, 1000+ device scale |
 
