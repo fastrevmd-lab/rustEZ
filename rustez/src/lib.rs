@@ -23,3 +23,18 @@
 //!     Ok(())
 //! }
 //! ```
+
+pub mod config;
+pub mod device;
+pub mod error;
+pub mod facts;
+pub mod rpc;
+
+pub use config::{ConfigManager, ConfigPayload};
+pub use device::{Device, DeviceBuilder};
+pub use error::RustEzError;
+pub use facts::{Facts, Personality, RouteEngine};
+pub use rpc::RpcExecutor;
+
+// Re-export rustnetconf types that users commonly need
+pub use rustnetconf::Datastore;

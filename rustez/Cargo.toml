@@ -10,7 +10,8 @@ keywords = ["junos", "juniper", "netconf", "network", "automation"]
 categories = ["network-programming"]
 
 [dependencies]
-rustnetconf = { git = "https://github.com/fastrevmd-lab/rustnetconf.git", branch = "main" }
+# TODO: switch to crates.io version after Client::rpc() PR is merged and published
+rustnetconf = { path = "/home/mharman/rustnetconf" }
 tokio = { version = "1", features = ["full"] }
 quick-xml = { version = "0.37", features = ["serialize"] }
 serde = { version = "1", features = ["derive"] }
