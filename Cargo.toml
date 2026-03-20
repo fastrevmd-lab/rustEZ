@@ -1,0 +1,3 @@
+[workspace]
+members = ["rustez", "rustez-cli", "rustez-py"]
+resolver = "2"

@@ -1,0 +1,11 @@
+[package]
+name = "rustez-py"
+version = "0.1.0"
+edition = "2021"
+authors = ["fastrevmd-lab"]
+description = "Python bindings for rustEZ — pip install rustez"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fastrevmd-lab/rustEZ"
+
+[dependencies]
+rustez = { path = "../rustez" }

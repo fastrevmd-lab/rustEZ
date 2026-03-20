@@ -1,0 +1,18 @@
+[package]
+name = "rustez"
+version = "0.1.0"
+edition = "2021"
+authors = ["fastrevmd-lab"]
+description = "A Rust replacement for Juniper PyEZ — async-first Junos automation built on rustnetconf"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fastrevmd-lab/rustEZ"
+keywords = ["junos", "juniper", "netconf", "network", "automation"]
+categories = ["network-programming"]
+
+[dependencies]
+rustnetconf = { git = "https://github.com/fastrevmd-lab/rustnetconf.git", branch = "main" }
+tokio = { version = "1", features = ["full"] }
+quick-xml = { version = "0.37", features = ["serialize"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
