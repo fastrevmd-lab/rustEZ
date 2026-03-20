@@ -29,7 +29,7 @@ Built on [rustnetconf](https://github.com/fastrevmd-lab/rustnetconf) for NETCONF
 ## Quick Start (Library)
 
 ```rust
-use rustez::Device;
+use rustez::{Device, ConfigPayload};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,10 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{} running Junos {}", facts.hostname, facts.version);
 
     // Push a config change
-    let mut config = dev.config();
+    let mut config = dev.config()?;
     config.lock().await?;
-    config.load(ConfigPayload::Set(
-        "set system host-name new-hostname".into()
+    config.load(ConfigPayload::Text(
+        "system { host-name new-hostname; }".into()
     )).await?;
 
     if let Some(diff) = config.diff().await? {
