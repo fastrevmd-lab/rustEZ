@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Check, Test, Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: cargo check (workspace)
+        run: cargo check
+
+      - name: cargo test (rustez, unit only)
+        run: cargo test -p rustez
+
+      - name: cargo clippy (rustez, deny warnings)
+        run: cargo clippy -p rustez -- -D warnings
+
+      - name: cargo doc (rustez)
+        run: cargo doc -p rustez --no-deps
