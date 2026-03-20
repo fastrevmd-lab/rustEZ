@@ -53,7 +53,10 @@ pub(crate) async fn gather_facts(
     let sw_xml = rpc_with_timeout(client, "<get-software-information/>", timeout).await?;
     let sw_items = unwrap_multi_re(&sw_xml);
     // Use first RE's software info (or the only one for single-RE)
-    let first_sw_xml = &sw_items[0].1;
+    let first_sw_xml = &sw_items
+        .first()
+        .ok_or_else(|| RustEzError::Facts("empty software-information response".to_string()))?
+        .1;
     let sw_info = software::parse_software_info(first_sw_xml);
 
     let hostname = sw_info
@@ -77,7 +80,12 @@ pub(crate) async fn gather_facts(
     // 2. Chassis inventory
     let chassis_xml = rpc_with_timeout(client, "<get-chassis-inventory/>", timeout).await?;
     let chassis_items = unwrap_multi_re(&chassis_xml);
-    let serial_number = chassis::parse_serial_number(&chassis_items[0].1)
+    let serial_number = chassis::parse_serial_number(
+        &chassis_items
+            .first()
+            .ok_or_else(|| RustEzError::Facts("empty chassis-inventory response".to_string()))?
+            .1,
+    )
         .unwrap_or_else(|| "unknown".to_string());
 
     // 3. Route engine information
@@ -117,7 +125,7 @@ async fn rpc_with_timeout(
     match result {
         Ok(inner) => inner.map_err(RustEzError::from),
         Err(_) => Err(RustEzError::Timeout(format!(
-            "facts RPC timed out after {timeout:?}: {rpc_content}"
+            "facts RPC timed out after {timeout:?}"
         ))),
     }
 }

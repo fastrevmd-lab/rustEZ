@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use quick_xml::escape::escape;
 use rustnetconf::{Client, Datastore};
 
 use crate::error::RustEzError;
@@ -103,19 +104,24 @@ async fn timed<T>(
 }
 
 /// Build the `<load-configuration>` XML for a given payload.
+///
+/// `Text` and `Set` payloads are XML-escaped to prevent injection.
+/// `Xml` is passed through raw since it's explicitly raw XML by design.
 fn build_load_xml(payload: &ConfigPayload) -> String {
     match payload {
         ConfigPayload::Xml(xml) => {
             format!("<load-configuration>{xml}</load-configuration>")
         }
         ConfigPayload::Text(text) => {
+            let escaped = escape(text);
             format!(
-                r#"<load-configuration format="text"><configuration-text>{text}</configuration-text></load-configuration>"#
+                r#"<load-configuration format="text"><configuration-text>{escaped}</configuration-text></load-configuration>"#
             )
         }
         ConfigPayload::Set(set_cmds) => {
+            let escaped = escape(set_cmds);
             format!(
-                r#"<load-configuration action="set" format="text"><configuration-set>{set_cmds}</configuration-set></load-configuration>"#
+                r#"<load-configuration action="set" format="text"><configuration-set>{escaped}</configuration-set></load-configuration>"#
             )
         }
     }
@@ -161,6 +167,22 @@ mod tests {
         assert!(xml.contains(r#"action="set""#));
         assert!(xml.contains(r#"format="text""#));
         assert!(xml.contains("<configuration-set>set system host-name test</configuration-set>"));
+    }
+
+    #[test]
+    fn test_build_load_xml_text_escapes_xml() {
+        let payload = ConfigPayload::Text("</configuration-text><delete-config/>".to_string());
+        let xml = build_load_xml(&payload);
+        assert!(!xml.contains("<delete-config/>"));
+        assert!(xml.contains("&lt;delete-config/&gt;"));
+    }
+
+    #[test]
+    fn test_build_load_xml_set_escapes_xml() {
+        let payload = ConfigPayload::Set("</configuration-set><evil/>".to_string());
+        let xml = build_load_xml(&payload);
+        assert!(!xml.contains("<evil/>"));
+        assert!(xml.contains("&lt;evil/&gt;"));
     }
 
     #[test]

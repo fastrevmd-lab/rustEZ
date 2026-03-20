@@ -32,7 +32,8 @@ fn vsrx_builder() -> DeviceBuilder {
         };
         builder = builder.key_file(&expanded);
     } else {
-        let pass = env::var("RUSTEZ_VSRX_PASS").unwrap_or_else(|_| "admin123".to_string());
+        let pass = env::var("RUSTEZ_VSRX_PASS")
+            .expect("RUSTEZ_VSRX_PASS or RUSTEZ_VSRX_KEY must be set");
         builder = builder.password(&pass);
     }
 

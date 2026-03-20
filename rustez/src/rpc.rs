@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use quick_xml::escape::escape;
 use rustnetconf::Client;
 
 use crate::error::RustEzError;
@@ -26,7 +27,7 @@ impl<'a> RpcExecutor<'a> {
         rpc_name: &str,
         args: &[(&str, &str)],
     ) -> Result<String, RustEzError> {
-        let xml = build_rpc_xml(rpc_name, args);
+        let xml = build_rpc_xml(rpc_name, args)?;
         self.call_xml(&xml).await
     }
 
@@ -47,7 +48,9 @@ impl<'a> RpcExecutor<'a> {
     /// Wraps the command in a `<command>` RPC element and parses
     /// the `<output>` from the response.
     pub async fn cli(&mut self, command: &str, format: &str) -> Result<String, RustEzError> {
-        let xml = format!(r#"<command format="{format}">{command}</command>"#);
+        validate_xml_name(format)?;
+        let escaped_command = escape(command);
+        let xml = format!(r#"<command format="{format}">{escaped_command}</command>"#);
         let response = self.call_xml(&xml).await?;
         Ok(parse_cli_output(&response))
     }
@@ -56,20 +59,42 @@ impl<'a> RpcExecutor<'a> {
 /// Build RPC XML from a name and key-value arguments.
 ///
 /// Underscores in the RPC name and argument keys are converted to hyphens.
-pub fn build_rpc_xml(rpc_name: &str, args: &[(&str, &str)]) -> String {
+/// Names and keys are validated to prevent XML injection. Values are
+/// XML-escaped.
+#[allow(clippy::result_large_err)]
+pub fn build_rpc_xml(rpc_name: &str, args: &[(&str, &str)]) -> Result<String, RustEzError> {
     let hyphenated_name = rpc_name.replace('_', "-");
+    validate_xml_name(&hyphenated_name)?;
 
     if args.is_empty() {
-        return format!("<{hyphenated_name}/>");
+        return Ok(format!("<{hyphenated_name}/>"));
     }
 
     let mut xml = format!("<{hyphenated_name}>");
     for (key, value) in args {
         let hyphenated_key = key.replace('_', "-");
-        xml.push_str(&format!("<{hyphenated_key}>{value}</{hyphenated_key}>"));
+        validate_xml_name(&hyphenated_key)?;
+        let escaped_value = escape(*value);
+        xml.push_str(&format!("<{hyphenated_key}>{escaped_value}</{hyphenated_key}>"));
     }
     xml.push_str(&format!("</{hyphenated_name}>"));
-    xml
+    Ok(xml)
+}
+
+/// Validate that a string is safe for use as an XML element name or attribute value.
+///
+/// Allows alphanumeric characters, hyphens, underscores, and dots.
+#[allow(clippy::result_large_err)]
+fn validate_xml_name(name: &str) -> Result<(), RustEzError> {
+    if name.is_empty() {
+        return Err(RustEzError::Rpc("XML name cannot be empty".to_string()));
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        return Err(RustEzError::Rpc(format!(
+            "invalid XML name: contains disallowed characters: {name:?}"
+        )));
+    }
+    Ok(())
 }
 
 /// Extract text content from `<output>` elements, or return the raw response.
@@ -97,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_underscore_to_hyphen_conversion() {
-        let xml = build_rpc_xml("get_software_information", &[]);
+        let xml = build_rpc_xml("get_software_information", &[]).unwrap();
         assert_eq!(xml, "<get-software-information/>");
     }
 
@@ -106,11 +131,31 @@ mod tests {
         let xml = build_rpc_xml(
             "get_interface_information",
             &[("interface_name", "ge-0/0/0"), ("terse", "")],
-        );
+        )
+        .unwrap();
         assert!(xml.starts_with("<get-interface-information>"));
         assert!(xml.contains("<interface-name>ge-0/0/0</interface-name>"));
         assert!(xml.contains("<terse></terse>"));
         assert!(xml.ends_with("</get-interface-information>"));
+    }
+
+    #[test]
+    fn test_xml_injection_in_rpc_name_rejected() {
+        let result = build_rpc_xml("foo><evil/><bar", &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_xml_injection_in_arg_key_rejected() {
+        let result = build_rpc_xml("get-info", &[("name><evil/><x", "val")]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_xml_injection_in_arg_value_escaped() {
+        let xml = build_rpc_xml("get-info", &[("name", "<script>alert(1)</script>")]).unwrap();
+        assert!(xml.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        assert!(!xml.contains("<script>"));
     }
 
     #[test]
