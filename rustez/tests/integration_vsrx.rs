@@ -2,8 +2,8 @@
 //!
 //! All tests are `#[ignore]` by default. Run with:
 //! ```sh
-//! RUSTEZ_VSRX_HOST=192.168.1.226 RUSTEZ_VSRX_USER=rustnetconf \
-//!     RUSTEZ_VSRX_KEY=~/.ssh/rustnetconf_test \
+//! RUSTEZ_VSRX_HOST=<DEVICE_IP> RUSTEZ_VSRX_USER=<USERNAME> \
+//!     RUSTEZ_VSRX_KEY=~/.ssh/<KEY_FILE> \
 //!     cargo test -p rustez -- --ignored
 //! ```
 

@@ -18,9 +18,9 @@ cargo doc -p rustez             # generate docs
 Gated behind `#[ignore]` and env vars. Requires a reachable vSRX:
 
 ```sh
-RUSTEZ_VSRX_HOST=10.0.0.1 \
-RUSTEZ_VSRX_USER=admin \
-RUSTEZ_VSRX_KEY=~/.ssh/key \
+RUSTEZ_VSRX_HOST=<DEVICE_IP> \
+RUSTEZ_VSRX_USER=<USERNAME> \
+RUSTEZ_VSRX_KEY=~/.ssh/<KEY_FILE> \
   cargo test -p rustez -- --ignored
 ```
 
