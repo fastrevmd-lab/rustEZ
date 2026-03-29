@@ -246,6 +246,22 @@ class Device:
         """Return device facts dict (hostname, model, version, etc.)."""
         return self._facts
 
+    def set_facts(self, facts: dict) -> None:
+        """Overwrite all device facts.
+
+        Args:
+            facts: Dict of facts to set (replaces existing facts entirely).
+        """
+        self._facts = _FactsDict(facts)
+
+    def update_facts(self, facts: dict) -> None:
+        """Merge facts into the existing facts dict.
+
+        Args:
+            facts: Dict of facts to merge (existing keys are overwritten).
+        """
+        self._facts.update(facts)
+
     @property
     def rpc(self) -> _RpcProxy:
         """Return the RPC proxy for executing NETCONF RPCs."""

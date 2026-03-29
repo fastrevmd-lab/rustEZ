@@ -63,6 +63,14 @@ impl Device {
         Ok(self.facts_cache.as_ref().unwrap())
     }
 
+    /// Manually set cached facts, replacing any existing values.
+    ///
+    /// Useful after connecting with `.no_facts()` to populate facts
+    /// without sending RPCs (e.g., clustered SRX with unreachable peer).
+    pub fn set_facts(&mut self, facts: Facts) {
+        self.facts_cache = Some(facts);
+    }
+
     /// Force re-gather facts from the device.
     pub async fn facts_refresh(&mut self) -> Result<&Facts, RustEzError> {
         let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
@@ -242,5 +250,35 @@ mod tests {
         ));
         assert!(matches!(device.rpc(), Err(RustEzError::NotConnected)));
         assert!(matches!(device.config(), Err(RustEzError::NotConnected)));
+    }
+
+    #[tokio::test]
+    async fn test_set_facts_populates_cache() {
+        let mut device = Device {
+            client: None,
+            facts_cache: None,
+            rpc_timeout: DEFAULT_RPC_TIMEOUT,
+        };
+
+        assert!(device.facts_cache.is_none());
+
+        let manual_facts = Facts {
+            hostname: "vsrx-test1".to_string(),
+            model: "vSRX".to_string(),
+            version: "21.4R3".to_string(),
+            serial_number: "ABC123".to_string(),
+            personality: facts::Personality::Vsrx,
+            route_engines: vec![],
+            master_re: None,
+            domain: None,
+            fqdn: None,
+        };
+
+        device.set_facts(manual_facts);
+
+        let cached = device.facts_cache.as_ref().unwrap();
+        assert_eq!(cached.hostname, "vsrx-test1");
+        assert_eq!(cached.model, "vSRX");
+        assert_eq!(cached.serial_number, "ABC123");
     }
 }
