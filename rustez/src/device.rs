@@ -52,6 +52,7 @@ impl Device {
             key_file: None,
             gather_facts: true,
             rpc_timeout: None,
+            keepalive_interval: None,
         }
     }
 
@@ -103,6 +104,24 @@ impl Device {
         Ok(ConfigManager::new(client, self.rpc_timeout))
     }
 
+    /// Check if the NETCONF session is alive (in-memory check, no RPC sent).
+    pub fn session_alive(&self) -> bool {
+        self.client
+            .as_ref()
+            .is_some_and(|c| c.session_alive())
+    }
+
+    /// Reconnect to the device using the original connection parameters.
+    ///
+    /// Closes the current session and establishes a fresh SSH/NETCONF connection.
+    /// Facts cache is cleared on reconnect.
+    pub async fn reconnect(&mut self) -> Result<(), RustEzError> {
+        let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
+        client.reconnect().await?;
+        self.facts_cache = None;
+        Ok(())
+    }
+
     /// Close the NETCONF session gracefully.
     ///
     /// Idempotent — calling close on an already-closed device is a no-op.
@@ -123,6 +142,7 @@ pub struct DeviceBuilder {
     key_file: Option<String>,
     gather_facts: bool,
     rpc_timeout: Option<Duration>,
+    keepalive_interval: Option<Duration>,
 }
 
 impl DeviceBuilder {
@@ -162,6 +182,15 @@ impl DeviceBuilder {
         self
     }
 
+    /// Set the keepalive interval for idle session probing.
+    ///
+    /// When set, the client sends a lightweight probe before RPCs if idle
+    /// time exceeds this interval. Disabled by default.
+    pub fn keepalive_interval(mut self, interval: Duration) -> Self {
+        self.keepalive_interval = Some(interval);
+        self
+    }
+
     /// Open the connection to the device.
     ///
     /// Establishes the SSH/NETCONF session and optionally gathers facts.
@@ -181,6 +210,9 @@ impl DeviceBuilder {
         }
         if let Some(ref key_file) = self.key_file {
             builder = builder.key_file(key_file);
+        }
+        if let Some(interval) = self.keepalive_interval {
+            builder = builder.keepalive_interval(interval);
         }
 
         let mut client = builder.connect().await?;

@@ -186,6 +186,7 @@ class Device:
         passwd: str = "",
         port: int = 830,
         timeout: int = 30,
+        keepalive_interval: int | None = None,
         **kwargs,
     ) -> None:
         """Initialize a device connection (does not connect yet).
@@ -196,6 +197,7 @@ class Device:
             passwd: SSH password.
             port: NETCONF port (default 830).
             timeout: Per-RPC timeout in seconds.
+            keepalive_interval: Seconds between idle session probes (default: disabled).
             **kwargs: Ignored (for PyEZ compat).
         """
         self._native = _PyDevice(
@@ -204,6 +206,7 @@ class Device:
             password=passwd,
             port=port,
             timeout=timeout,
+            keepalive_interval=keepalive_interval,
         )
         self._facts: _FactsDict = _FactsDict()
         self._rpc = _RpcProxy(self._native)
@@ -251,6 +254,28 @@ class Device:
         except RuntimeError:
             pass
         self._connected = False
+
+    def session_alive(self) -> bool:
+        """Check if the NETCONF session is alive (fast in-memory check, no RPC)."""
+        try:
+            return self._native.session_alive()
+        except RuntimeError:
+            return False
+
+    def reconnect(self) -> None:
+        """Reconnect to the device using the original connection parameters.
+
+        Closes the current session and opens a fresh SSH/NETCONF connection.
+        Facts cache is cleared — call dev.facts to re-gather.
+
+        Raises:
+            ConnectError: On reconnection failure.
+        """
+        try:
+            self._native.reconnect()
+        except RuntimeError as exc:
+            raise classify_error(exc) from exc
+        self._connected = True
 
     @property
     def facts(self) -> _FactsDict:

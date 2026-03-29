@@ -41,14 +41,15 @@ struct PyDevice {
     username: String,
     password: Mutex<String>,
     timeout: u64,
+    keepalive_interval: Option<u64>,
 }
 
 #[pymethods]
 impl PyDevice {
     /// Create a new PyDevice (does NOT connect yet — call .open()).
     #[new]
-    #[pyo3(signature = (host, username, password, port=830, timeout=30))]
-    fn new(host: String, username: String, password: String, port: u16, timeout: u64) -> PyResult<Self> {
+    #[pyo3(signature = (host, username, password, port=830, timeout=30, keepalive_interval=None))]
+    fn new(host: String, username: String, password: String, port: u16, timeout: u64, keepalive_interval: Option<u64>) -> PyResult<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -62,6 +63,7 @@ impl PyDevice {
             username,
             password: Mutex::new(password),
             timeout,
+            keepalive_interval,
         })
     }
 
@@ -87,6 +89,9 @@ impl PyDevice {
                 if !gather_facts {
                     builder = builder.no_facts();
                 }
+                if let Some(secs) = self.keepalive_interval {
+                    builder = builder.keepalive_interval(Duration::from_secs(secs));
+                }
 
                 builder.open().await
             }).map_err(to_py_err)
@@ -101,6 +106,21 @@ impl PyDevice {
         let mut guard = lock_mutex(&self.device)?;
         *guard = Some(dev);
         Ok(())
+    }
+
+    /// Check if the NETCONF session is alive (in-memory check, no RPC).
+    fn session_alive(&self) -> PyResult<bool> {
+        let guard = lock_mutex(&self.device)?;
+        Ok(guard.as_ref().map_or(false, |dev| dev.session_alive()))
+    }
+
+    /// Reconnect to the device using the original connection parameters.
+    fn reconnect(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            self.runtime.block_on(dev.reconnect()).map_err(to_py_err)
+        })
     }
 
     /// Close the NETCONF connection.
