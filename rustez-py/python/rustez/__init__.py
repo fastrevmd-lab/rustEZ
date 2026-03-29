@@ -297,6 +297,7 @@ class Config:
         cu.lock()
         cu.load("set system host-name test", format="set")
         print(cu.diff())
+        cu.commit_check()  # validate before applying
         cu.commit(comment="test change")
         cu.unlock()
     """
@@ -379,6 +380,17 @@ class Config:
                 self._native.config_commit_confirmed(confirm * 60)
             else:
                 self._native.config_commit()
+        except RuntimeError as exc:
+            raise classify_error(exc) from exc
+
+    def commit_check(self) -> None:
+        """Validate the candidate configuration without committing.
+
+        Raises:
+            RpcError: If validation fails (invalid config).
+        """
+        try:
+            self._native.config_commit_check()
         except RuntimeError as exc:
             raise classify_error(exc) from exc
 
