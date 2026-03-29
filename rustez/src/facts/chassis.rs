@@ -47,7 +47,7 @@ pub(crate) fn parse_serial_number(xml: &str) -> Option<String> {
                 } else if name == "chassis" {
                     in_chassis = false;
                 } else if in_chassis {
-                    depth -= 1;
+                    depth = depth.saturating_sub(1);
                 }
             }
             Ok(Event::Eof) => break,

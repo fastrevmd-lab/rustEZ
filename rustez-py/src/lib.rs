@@ -3,8 +3,11 @@
 //! Exposes a blocking `PyDevice` that wraps async rustez operations
 //! using a per-device tokio runtime. Returns XML strings to Python;
 //! the pure-Python layer parses them into lxml Elements.
+//!
+//! All blocking network I/O releases the Python GIL so other threads
+//! can run concurrently.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use pyo3::exceptions::PyRuntimeError;
@@ -18,6 +21,13 @@ fn to_py_err(err: rustez::RustEzError) -> PyErr {
     PyRuntimeError::new_err(format!("{err}"))
 }
 
+/// Lock a Mutex, converting poison errors to Python RuntimeError.
+fn lock_mutex<T>(mutex: &Mutex<T>) -> PyResult<MutexGuard<'_, T>> {
+    mutex
+        .lock()
+        .map_err(|_| PyRuntimeError::new_err("internal lock poisoned"))
+}
+
 /// Native device handle. All methods are blocking (run async on internal tokio runtime).
 ///
 /// The Python `rustez.Device` class wraps this and adds lxml parsing,
@@ -29,7 +39,7 @@ struct PyDevice {
     host: String,
     port: u16,
     username: String,
-    password: String,
+    password: Mutex<String>,
     timeout: u64,
 }
 
@@ -50,7 +60,7 @@ impl PyDevice {
             host,
             port,
             username,
-            password,
+            password: Mutex::new(password),
             timeout,
         })
     }
@@ -60,108 +70,138 @@ impl PyDevice {
     /// When `gather_facts` is False, the session connects without sending
     /// facts RPCs — useful for clustered SRX where a peer node is unreachable.
     #[pyo3(signature = (gather_facts=true))]
-    fn open(&self, gather_facts: bool) -> PyResult<()> {
-        let dev = self.runtime.block_on(async {
-            let mut builder = Device::connect(&self.host)
-                .port(self.port)
-                .username(&self.username)
-                .password(&self.password)
-                .rpc_timeout(Duration::from_secs(self.timeout));
+    fn open(&self, py: Python<'_>, gather_facts: bool) -> PyResult<()> {
+        let password = {
+            let guard = lock_mutex(&self.password)?;
+            guard.clone()
+        };
 
-            if !gather_facts {
-                builder = builder.no_facts();
-            }
+        let dev = py.allow_threads(|| {
+            self.runtime.block_on(async {
+                let mut builder = Device::connect(&self.host)
+                    .port(self.port)
+                    .username(&self.username)
+                    .password(&password)
+                    .rpc_timeout(Duration::from_secs(self.timeout));
 
-            builder.open().await
-        }).map_err(to_py_err)?;
+                if !gather_facts {
+                    builder = builder.no_facts();
+                }
 
-        let mut guard = self.device.lock().unwrap();
+                builder.open().await
+            }).map_err(to_py_err)
+        })?;
+
+        // Clear password from memory after successful connection
+        {
+            let mut guard = lock_mutex(&self.password)?;
+            guard.clear();
+        }
+
+        let mut guard = lock_mutex(&self.device)?;
         *guard = Some(dev);
         Ok(())
     }
 
     /// Close the NETCONF connection.
-    fn close(&self) -> PyResult<()> {
-        let mut guard = self.device.lock().unwrap();
-        if let Some(ref mut dev) = *guard {
-            self.runtime.block_on(dev.close()).map_err(to_py_err)?;
-        }
-        *guard = None;
-        Ok(())
+    fn close(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            if let Some(ref mut dev) = *guard {
+                self.runtime.block_on(dev.close()).map_err(to_py_err)?;
+            }
+            *guard = None;
+            Ok(())
+        })
     }
 
     /// Return facts as a Python dict.
-    fn facts(&self) -> PyResult<Vec<(String, String)>> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let facts = self.runtime.block_on(dev.facts()).map_err(to_py_err)?;
-        Ok(vec![
-            ("hostname".to_string(), facts.hostname.clone()),
-            ("model".to_string(), facts.model.clone()),
-            ("version".to_string(), facts.version.clone()),
-            ("serialnumber".to_string(), facts.serial_number.clone()),
-            ("personality".to_string(), format!("{}", facts.personality)),
-        ])
+    fn facts(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let facts = self.runtime.block_on(dev.facts()).map_err(to_py_err)?;
+            Ok(vec![
+                ("hostname".to_string(), facts.hostname.clone()),
+                ("model".to_string(), facts.model.clone()),
+                ("version".to_string(), facts.version.clone()),
+                ("serialnumber".to_string(), facts.serial_number.clone()),
+                ("personality".to_string(), format!("{}", facts.personality)),
+            ])
+        })
     }
 
     /// Execute a CLI command. Returns text output.
-    fn cli(&self, command: &str) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        self.runtime.block_on(dev.cli(command)).map_err(to_py_err)
+    fn cli(&self, py: Python<'_>, command: &str) -> PyResult<String> {
+        let command = command.to_string();
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            self.runtime.block_on(dev.cli(&command)).map_err(to_py_err)
+        })
     }
 
     /// Execute a named RPC. Returns raw XML string.
     ///
     /// `rpc_name`: underscore-separated (e.g. "get_interface_information")
     /// `args`: list of (key, value) tuples
-    fn rpc_call(&self, rpc_name: &str, args: Vec<(String, String)>) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut rpc = dev.rpc().map_err(to_py_err)?;
+    fn rpc_call(&self, py: Python<'_>, rpc_name: &str, args: Vec<(String, String)>) -> PyResult<String> {
+        let rpc_name = rpc_name.to_string();
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut rpc = dev.rpc().map_err(to_py_err)?;
 
-        let arg_refs: Vec<(&str, &str)> = args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        self.runtime.block_on(rpc.call(rpc_name, &arg_refs)).map_err(to_py_err)
+            let arg_refs: Vec<(&str, &str)> = args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+            self.runtime.block_on(rpc.call(&rpc_name, &arg_refs)).map_err(to_py_err)
+        })
     }
 
     /// Execute a CLI command via RPC, returning raw XML string.
-    fn rpc_cli(&self, command: &str, format: &str) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut rpc = dev.rpc().map_err(to_py_err)?;
-        self.runtime.block_on(rpc.cli(command, format)).map_err(to_py_err)
+    fn rpc_cli(&self, py: Python<'_>, command: &str, format: &str) -> PyResult<String> {
+        let command = command.to_string();
+        let format = format.to_string();
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut rpc = dev.rpc().map_err(to_py_err)?;
+            self.runtime.block_on(rpc.cli(&command, &format)).map_err(to_py_err)
+        })
     }
 
     /// Send raw XML RPC. Returns raw XML string.
-    fn rpc_xml(&self, xml: &str) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut rpc = dev.rpc().map_err(to_py_err)?;
-        self.runtime.block_on(rpc.call_xml(xml)).map_err(to_py_err)
+    fn rpc_xml(&self, py: Python<'_>, xml: &str) -> PyResult<String> {
+        let xml = xml.to_string();
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut rpc = dev.rpc().map_err(to_py_err)?;
+            self.runtime.block_on(rpc.call_xml(&xml)).map_err(to_py_err)
+        })
     }
 
     /// Lock the candidate config.
-    fn config_lock(&self) -> PyResult<()> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        self.runtime.block_on(cfg.lock()).map_err(to_py_err)
+    fn config_lock(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.lock()).map_err(to_py_err)
+        })
     }
 
     /// Unlock the candidate config.
-    fn config_unlock(&self) -> PyResult<()> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        self.runtime.block_on(cfg.unlock()).map_err(to_py_err)
+    fn config_unlock(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.unlock()).map_err(to_py_err)
+        })
     }
 
     /// Load config. format: "set", "text", or "xml".
-    fn config_load(&self, content: &str, format: &str) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-
+    fn config_load(&self, py: Python<'_>, content: &str, format: &str) -> PyResult<String> {
         let payload = match format {
             "set" => ConfigPayload::Set(content.to_string()),
             "text" => ConfigPayload::Text(content.to_string()),
@@ -169,48 +209,63 @@ impl PyDevice {
             _ => return Err(PyRuntimeError::new_err(format!("unknown format: {format}"))),
         };
 
-        self.runtime.block_on(cfg.load(payload)).map_err(to_py_err)
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.load(payload)).map_err(to_py_err)
+        })
     }
 
     /// Get candidate diff. Returns diff string or empty string.
-    fn config_diff(&self) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        let diff = self.runtime.block_on(cfg.diff()).map_err(to_py_err)?;
-        Ok(diff.unwrap_or_default())
+    fn config_diff(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            let diff = self.runtime.block_on(cfg.diff()).map_err(to_py_err)?;
+            Ok(diff.unwrap_or_default())
+        })
     }
 
     /// Commit candidate config.
-    fn config_commit(&self) -> PyResult<()> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        self.runtime.block_on(cfg.commit()).map_err(to_py_err)
+    fn config_commit(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.commit()).map_err(to_py_err)
+        })
     }
 
     /// Commit confirmed with rollback timer in seconds.
-    fn config_commit_confirmed(&self, seconds: u32) -> PyResult<()> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        self.runtime.block_on(cfg.commit_confirmed(seconds)).map_err(to_py_err)
+    fn config_commit_confirmed(&self, py: Python<'_>, seconds: u32) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.commit_confirmed(seconds)).map_err(to_py_err)
+        })
     }
 
     /// Rollback to configuration N (0 = running).
-    fn config_rollback(&self, id: u32) -> PyResult<String> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        self.runtime.block_on(cfg.rollback(id)).map_err(to_py_err)
+    fn config_rollback(&self, py: Python<'_>, id: u32) -> PyResult<String> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.rollback(id)).map_err(to_py_err)
+        })
     }
 
     /// Validate candidate config without committing.
-    fn config_commit_check(&self) -> PyResult<()> {
-        let mut guard = self.device.lock().unwrap();
-        let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-        let mut cfg = dev.config().map_err(to_py_err)?;
-        self.runtime.block_on(cfg.commit_check()).map_err(to_py_err)
+    fn config_commit_check(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut cfg = dev.config().map_err(to_py_err)?;
+            self.runtime.block_on(cfg.commit_check()).map_err(to_py_err)
+        })
     }
 }
 

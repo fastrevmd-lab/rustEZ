@@ -122,9 +122,20 @@ class _RpcProxy:
         options = kwargs.get("options", {})
         fmt = options.get("format", "xml")
 
+        valid_formats = ("xml", "text", "set", "json")
+        if fmt not in valid_formats:
+            raise ValueError(
+                f"invalid format {fmt!r}, must be one of {valid_formats}"
+            )
+
         # Build the get-config RPC XML
         rpc_xml = f'<get-configuration format="{fmt}"'
         if filter_xml:
+            # Validate filter_xml is well-formed before embedding
+            try:
+                etree.fromstring(filter_xml.encode("utf-8"))
+            except etree.XMLSyntaxError as exc:
+                raise ValueError(f"filter_xml is not well-formed XML: {exc}") from exc
             rpc_xml += f">{filter_xml}</get-configuration>"
         else:
             rpc_xml += "/>"
@@ -369,13 +380,17 @@ class Config:
             comment: Optional commit comment (note: rustEZ commit comment
                 support requires the commit RPC to include <log> element —
                 TODO: add to native layer).
-            confirm: If > 0, use commit-confirmed with this many minutes.
+            confirm: If > 0, use commit-confirmed with this many minutes
+                (max 720 / 12 hours).
             **kwargs: Ignored (PyEZ compat).
 
         Raises:
             RpcError: If commit fails.
+            ValueError: If confirm exceeds 720 minutes.
         """
         try:
+            if confirm > 720:
+                raise ValueError(f"confirm={confirm} exceeds max 720 minutes (12h)")
             if confirm > 0:
                 self._native.config_commit_confirmed(confirm * 60)
             else:

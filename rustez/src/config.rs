@@ -17,6 +17,10 @@ pub struct ConfigManager<'a> {
 #[derive(Debug, Clone)]
 pub enum ConfigPayload {
     /// Raw XML config elements.
+    ///
+    /// # Warning
+    /// Content is embedded directly without escaping. Callers must not
+    /// pass untrusted input — use [`Text`] or [`Set`] for user-provided config.
     Xml(String),
     /// Junos text format (curly brace).
     Text(String),
