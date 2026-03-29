@@ -7,5 +7,11 @@ description = "Python bindings for rustEZ — pip install rustez"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/fastrevmd-lab/rustEZ"
 
+[lib]
+name = "_rustez_native"
+crate-type = ["cdylib"]
+
 [dependencies]
 rustez = { path = "../rustez" }
+pyo3 = { version = "0.24", features = ["extension-module"] }
+tokio = { version = "1", features = ["full"] }
