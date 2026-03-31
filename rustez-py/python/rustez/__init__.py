@@ -186,6 +186,7 @@ class Device:
         passwd: str = "",
         port: int = 830,
         timeout: int = 30,
+        ssh_private_key_file: str | None = None,
         keepalive_interval: int | None = None,
         **kwargs,
     ) -> None:
@@ -197,6 +198,7 @@ class Device:
             passwd: SSH password.
             port: NETCONF port (default 830).
             timeout: Per-RPC timeout in seconds.
+            ssh_private_key_file: Path to SSH private key file (optional).
             keepalive_interval: Seconds between idle session probes (default: disabled).
             **kwargs: Ignored (for PyEZ compat).
         """
@@ -207,6 +209,7 @@ class Device:
             port=port,
             timeout=timeout,
             keepalive_interval=keepalive_interval,
+            ssh_private_key_file=ssh_private_key_file,
         )
         self._facts: _FactsDict = _FactsDict()
         self._rpc = _RpcProxy(self._native)

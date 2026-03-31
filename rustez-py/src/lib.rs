@@ -42,14 +42,15 @@ struct PyDevice {
     password: Mutex<String>,
     timeout: u64,
     keepalive_interval: Option<u64>,
+    ssh_private_key_file: Option<String>,
 }
 
 #[pymethods]
 impl PyDevice {
     /// Create a new PyDevice (does NOT connect yet — call .open()).
     #[new]
-    #[pyo3(signature = (host, username, password, port=830, timeout=30, keepalive_interval=None))]
-    fn new(host: String, username: String, password: String, port: u16, timeout: u64, keepalive_interval: Option<u64>) -> PyResult<Self> {
+    #[pyo3(signature = (host, username, password, port=830, timeout=30, keepalive_interval=None, ssh_private_key_file=None))]
+    fn new(host: String, username: String, password: String, port: u16, timeout: u64, keepalive_interval: Option<u64>, ssh_private_key_file: Option<String>) -> PyResult<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -64,6 +65,7 @@ impl PyDevice {
             password: Mutex::new(password),
             timeout,
             keepalive_interval,
+            ssh_private_key_file,
         })
     }
 
@@ -91,6 +93,9 @@ impl PyDevice {
                 }
                 if let Some(secs) = self.keepalive_interval {
                     builder = builder.keepalive_interval(Duration::from_secs(secs));
+                }
+                if let Some(ref key_path) = self.ssh_private_key_file {
+                    builder = builder.key_file(key_path);
                 }
 
                 builder.open().await
