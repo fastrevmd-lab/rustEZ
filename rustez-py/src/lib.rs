@@ -14,7 +14,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 use rustez::config::ConfigPayload;
-use rustez::Device;
+use rustez::{Device, OpenConfigurationMode};
 
 /// Convert a RustEzError to a Python RuntimeError string.
 fn to_py_err(err: rustez::RustEzError) -> PyErr {
@@ -135,6 +135,12 @@ impl PyDevice {
         })
     }
 
+    /// Whether the device is part of a chassis cluster.
+    fn is_cluster(&self) -> PyResult<bool> {
+        let guard = lock_mutex(&self.device)?;
+        Ok(guard.as_ref().map_or(false, |dev| dev.is_cluster()))
+    }
+
     /// Return facts as a Python dict.
     fn facts(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
         py.allow_threads(|| {
@@ -147,6 +153,7 @@ impl PyDevice {
                 ("version".to_string(), facts.version.clone()),
                 ("serialnumber".to_string(), facts.serial_number.clone()),
                 ("personality".to_string(), format!("{}", facts.personality)),
+                ("is_cluster".to_string(), facts.is_cluster.to_string()),
             ])
         })
     }
@@ -197,6 +204,68 @@ impl PyDevice {
             let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
             let mut rpc = dev.rpc().map_err(to_py_err)?;
             self.runtime.block_on(rpc.call_xml(&xml)).map_err(to_py_err)
+        })
+    }
+
+    /// Send raw XML RPC and return any warnings alongside the response.
+    ///
+    /// Returns `(response_xml, [(severity, message), ...])`.
+    fn rpc_xml_with_warnings(
+        &self,
+        py: Python<'_>,
+        xml: &str,
+    ) -> PyResult<(String, Vec<(String, String)>)> {
+        let xml = xml.to_string();
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            let mut rpc = dev.rpc().map_err(to_py_err)?;
+            let (data, warnings) = self
+                .runtime
+                .block_on(rpc.call_xml_with_warnings(&xml))
+                .map_err(to_py_err)?;
+            let warning_tuples: Vec<(String, String)> = warnings
+                .iter()
+                .map(|w| {
+                    let severity = w
+                        .severity
+                        .as_ref()
+                        .map(|s| format!("{s:?}").to_lowercase())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    (severity, w.message.clone())
+                })
+                .collect();
+            Ok((data, warning_tuples))
+        })
+    }
+
+    /// Open a private or exclusive configuration database (Junos clusters).
+    ///
+    /// `mode`: `"private"` or `"exclusive"`.
+    #[pyo3(signature = (mode="private"))]
+    fn config_open_configuration(&self, py: Python<'_>, mode: &str) -> PyResult<()> {
+        let open_mode = match mode {
+            "private" => OpenConfigurationMode::Private,
+            "exclusive" => OpenConfigurationMode::Exclusive,
+            _ => return Err(PyRuntimeError::new_err(format!("unknown mode: {mode}, use 'private' or 'exclusive'"))),
+        };
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            self.runtime
+                .block_on(dev.open_configuration(open_mode))
+                .map_err(to_py_err)
+        })
+    }
+
+    /// Close a previously opened configuration database.
+    fn config_close_configuration(&self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| {
+            let mut guard = lock_mutex(&self.device)?;
+            let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
+            self.runtime
+                .block_on(dev.close_configuration())
+                .map_err(to_py_err)
         })
     }
 

@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use quick_xml::escape::escape;
+use rustnetconf::rpc::RpcErrorInfo;
 use rustnetconf::Client;
 
 use crate::error::RustEzError;
@@ -34,6 +35,38 @@ impl<'a> RpcExecutor<'a> {
     /// Send pre-built XML directly as an RPC.
     pub async fn call_xml(&mut self, xml: &str) -> Result<String, RustEzError> {
         let result = tokio::time::timeout(self.timeout, self.client.rpc(xml)).await;
+        match result {
+            Ok(inner) => Ok(inner?),
+            Err(_) => Err(RustEzError::Timeout(format!(
+                "RPC timed out after {:?}",
+                self.timeout
+            ))),
+        }
+    }
+
+    /// Call a named RPC with key-value arguments, returning any warnings.
+    ///
+    /// Same as [`call()`](Self::call) but also returns non-fatal warnings
+    /// from the device response.
+    pub async fn call_with_warnings(
+        &mut self,
+        rpc_name: &str,
+        args: &[(&str, &str)],
+    ) -> Result<(String, Vec<RpcErrorInfo>), RustEzError> {
+        let xml = build_rpc_xml(rpc_name, args)?;
+        self.call_xml_with_warnings(&xml).await
+    }
+
+    /// Send pre-built XML directly as an RPC, returning any warnings.
+    ///
+    /// Same as [`call_xml()`](Self::call_xml) but also returns non-fatal
+    /// warnings from the device response.
+    pub async fn call_xml_with_warnings(
+        &mut self,
+        xml: &str,
+    ) -> Result<(String, Vec<RpcErrorInfo>), RustEzError> {
+        let result =
+            tokio::time::timeout(self.timeout, self.client.rpc_with_warnings(xml)).await;
         match result {
             Ok(inner) => Ok(inner?),
             Err(_) => Err(RustEzError::Timeout(format!(

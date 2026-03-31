@@ -238,7 +238,11 @@ class Device:
         if gather_facts:
             try:
                 raw_facts = self._native.facts()
-                self._facts = _FactsDict(raw_facts)
+                facts = _FactsDict(raw_facts)
+                # Convert is_cluster string to bool
+                if "is_cluster" in facts:
+                    facts["is_cluster"] = facts["is_cluster"] == "true"
+                self._facts = facts
             except RuntimeError:
                 self._facts = _FactsDict()
         else:
@@ -308,6 +312,14 @@ class Device:
         """Return True if the device is connected."""
         return self._connected
 
+    @property
+    def is_cluster(self) -> bool:
+        """Whether the device is part of a chassis cluster."""
+        try:
+            return self._native.is_cluster()
+        except RuntimeError:
+            return False
+
     def cli(self, command: str, warning: bool = True) -> str:
         """Execute a CLI command and return text output.
 
@@ -345,6 +357,30 @@ class Config:
             dev: A connected rustez.Device instance.
         """
         self._native = dev._native
+
+    def open_configuration(self, mode: str = "private") -> None:
+        """Open a private or exclusive configuration database (Junos clusters).
+
+        On chassis-clustered devices, load() handles this automatically
+        in private mode. Use this for explicit control or exclusive mode.
+
+        Args:
+            mode: 'private' or 'exclusive'.
+        """
+        try:
+            self._native.config_open_configuration(mode)
+        except RuntimeError as exc:
+            raise classify_error(exc) from exc
+
+    def close_configuration(self) -> None:
+        """Close a previously opened configuration database.
+
+        No-op if no configuration database is open.
+        """
+        try:
+            self._native.config_close_configuration()
+        except RuntimeError as exc:
+            raise classify_error(exc) from exc
 
     def lock(self) -> None:
         """Lock the candidate configuration.

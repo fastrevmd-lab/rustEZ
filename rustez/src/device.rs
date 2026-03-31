@@ -37,6 +37,7 @@ pub struct Device {
     client: Option<Client>,
     facts_cache: Option<Facts>,
     rpc_timeout: Duration,
+    config_db_open: bool,
 }
 
 impl Device {
@@ -98,10 +99,66 @@ impl Device {
     }
 
     /// Get a config manager for configuration operations.
+    ///
+    /// On chassis-clustered devices, the config manager will automatically
+    /// open a private configuration database before loading config and
+    /// close it on unlock. Use [`open_configuration()`](Self::open_configuration)
+    /// for explicit control (e.g., exclusive mode).
     #[allow(clippy::result_large_err)]
     pub fn config(&mut self) -> Result<ConfigManager<'_>, RustEzError> {
         let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
-        Ok(ConfigManager::new(client, self.rpc_timeout))
+        Ok(ConfigManager::new(client, self.rpc_timeout, &mut self.config_db_open))
+    }
+
+    /// Open a private or exclusive configuration database (Junos).
+    ///
+    /// Only needed on chassis-clustered devices. Call this before
+    /// [`config().load()`](ConfigManager::load) if you need exclusive mode.
+    /// For private mode, the config manager handles this automatically.
+    pub async fn open_configuration(
+        &mut self,
+        mode: rustnetconf::OpenConfigurationMode,
+    ) -> Result<(), RustEzError> {
+        let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
+        let timeout = self.rpc_timeout;
+        match tokio::time::timeout(timeout, client.open_configuration(mode)).await {
+            Ok(inner) => inner?,
+            Err(_) => {
+                return Err(RustEzError::Timeout(
+                    "open_configuration timed out".to_string(),
+                ))
+            }
+        }
+        self.config_db_open = true;
+        Ok(())
+    }
+
+    /// Close a previously opened configuration database (Junos).
+    ///
+    /// No-op if no configuration database is open.
+    pub async fn close_configuration(&mut self) -> Result<(), RustEzError> {
+        if !self.config_db_open {
+            return Ok(());
+        }
+        let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
+        let timeout = self.rpc_timeout;
+        match tokio::time::timeout(timeout, client.close_configuration()).await {
+            Ok(inner) => inner?,
+            Err(_) => {
+                return Err(RustEzError::Timeout(
+                    "close_configuration timed out".to_string(),
+                ))
+            }
+        }
+        self.config_db_open = false;
+        Ok(())
+    }
+
+    /// Whether the device is part of a chassis cluster.
+    ///
+    /// Returns `false` if facts have not been gathered yet.
+    pub fn is_cluster(&self) -> bool {
+        self.facts_cache.as_ref().is_some_and(|f| f.is_cluster)
     }
 
     /// Check if the NETCONF session is alive (in-memory check, no RPC sent).
@@ -230,6 +287,7 @@ impl DeviceBuilder {
             client: Some(client),
             facts_cache,
             rpc_timeout,
+            config_db_open: false,
         })
     }
 }
@@ -260,6 +318,7 @@ mod tests {
             client: None,
             facts_cache: None,
             rpc_timeout: DEFAULT_RPC_TIMEOUT,
+            config_db_open: false,
         };
 
         // First close — no-op, should succeed
@@ -274,6 +333,7 @@ mod tests {
             client: None,
             facts_cache: None,
             rpc_timeout: DEFAULT_RPC_TIMEOUT,
+            config_db_open: false,
         };
 
         assert!(matches!(
@@ -290,6 +350,7 @@ mod tests {
             client: None,
             facts_cache: None,
             rpc_timeout: DEFAULT_RPC_TIMEOUT,
+            config_db_open: false,
         };
 
         assert!(device.facts_cache.is_none());
@@ -304,6 +365,7 @@ mod tests {
             master_re: None,
             domain: None,
             fqdn: None,
+            is_cluster: false,
         };
 
         device.set_facts(manual_facts);

@@ -37,6 +37,8 @@ pub struct Facts {
     pub domain: Option<String>,
     /// Fully qualified domain name.
     pub fqdn: Option<String>,
+    /// Whether the device is part of a chassis cluster.
+    pub is_cluster: bool,
 }
 
 /// Gather facts from a connected Junos device.
@@ -52,6 +54,7 @@ pub(crate) async fn gather_facts(
     // 1. Software information
     let sw_xml = rpc_with_timeout(client, "<get-software-information/>", timeout).await?;
     let sw_items = unwrap_multi_re(&sw_xml);
+    let is_cluster = sw_items.len() > 1;
     // Use first RE's software info (or the only one for single-RE)
     let first_sw_xml = &sw_items
         .first()
@@ -112,6 +115,7 @@ pub(crate) async fn gather_facts(
         master_re,
         domain,
         fqdn,
+        is_cluster,
     })
 }
 
@@ -293,5 +297,34 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert!(items[0].0.is_none());
         assert_eq!(items[0].1, xml);
+    }
+
+    #[test]
+    fn test_cluster_detected_from_multi_re_items() {
+        let xml = r#"<multi-routing-engine-results>
+  <multi-routing-engine-item>
+    <re-name>node0</re-name>
+    <software-information><host-name>node0</host-name></software-information>
+  </multi-routing-engine-item>
+  <multi-routing-engine-item>
+    <re-name>node1</re-name>
+    <software-information><host-name>node1</host-name></software-information>
+  </multi-routing-engine-item>
+</multi-routing-engine-results>"#;
+
+        let items = unwrap_multi_re(xml);
+        let is_cluster = items.len() > 1;
+        assert!(is_cluster);
+    }
+
+    #[test]
+    fn test_single_re_not_cluster() {
+        let xml = r#"<software-information>
+  <host-name>vsrx1</host-name>
+</software-information>"#;
+
+        let items = unwrap_multi_re(xml);
+        let is_cluster = items.len() > 1;
+        assert!(!is_cluster);
     }
 }

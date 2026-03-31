@@ -3,14 +3,21 @@
 use std::time::Duration;
 
 use quick_xml::escape::escape;
-use rustnetconf::{Client, Datastore};
+use rustnetconf::rpc::RpcErrorInfo;
+use rustnetconf::{Client, Datastore, LoadAction, LoadFormat, OpenConfigurationMode};
 
 use crate::error::RustEzError;
 
 /// Transient config helper returned by [`Device::config()`](crate::Device::config).
+///
+/// On chassis-clustered devices, [`load()`](Self::load) automatically opens
+/// a private configuration database before loading, and [`unlock()`](Self::unlock)
+/// closes it. Use [`open_configuration()`](Self::open_configuration) for
+/// explicit control (e.g., exclusive mode).
 pub struct ConfigManager<'a> {
     client: &'a mut Client,
     timeout: Duration,
+    config_db_open: &'a mut bool,
 }
 
 /// The format/payload for a configuration load operation.
@@ -29,8 +36,16 @@ pub enum ConfigPayload {
 }
 
 impl<'a> ConfigManager<'a> {
-    pub(crate) fn new(client: &'a mut Client, timeout: Duration) -> Self {
-        Self { client, timeout }
+    pub(crate) fn new(
+        client: &'a mut Client,
+        timeout: Duration,
+        config_db_open: &'a mut bool,
+    ) -> Self {
+        Self {
+            client,
+            timeout,
+            config_db_open,
+        }
     }
 
     /// Lock the candidate datastore.
@@ -40,16 +55,68 @@ impl<'a> ConfigManager<'a> {
     }
 
     /// Unlock the candidate datastore.
+    ///
+    /// If a private/exclusive configuration database was auto-opened,
+    /// it is closed before unlocking.
     pub async fn unlock(&mut self) -> Result<(), RustEzError> {
+        if *self.config_db_open {
+            let timeout = self.timeout;
+            timed(timeout, self.client.close_configuration()).await?;
+            *self.config_db_open = false;
+        }
         let timeout = self.timeout;
         timed(timeout, self.client.unlock(Datastore::Candidate)).await
     }
 
     /// Load configuration into the candidate datastore.
+    ///
+    /// On chassis-clustered devices, automatically opens a private
+    /// configuration database if one is not already open.
     pub async fn load(&mut self, payload: ConfigPayload) -> Result<String, RustEzError> {
+        self.auto_open_if_needed().await?;
+
+        let (action, format, config) = payload_to_load_args(&payload);
+        let timeout = self.timeout;
+        timed(
+            timeout,
+            self.client.load_configuration(action, format, &config),
+        )
+        .await
+    }
+
+    /// Load configuration with an explicit action (merge, replace, override, update).
+    ///
+    /// Use this when you need an action other than the default (merge for
+    /// text/xml, set for set commands).
+    pub async fn load_with_action(
+        &mut self,
+        payload: ConfigPayload,
+        action: LoadAction,
+    ) -> Result<String, RustEzError> {
+        self.auto_open_if_needed().await?;
+
+        let (_default_action, format, config) = payload_to_load_args(&payload);
+        let timeout = self.timeout;
+        timed(
+            timeout,
+            self.client.load_configuration(action, format, &config),
+        )
+        .await
+    }
+
+    /// Load configuration and return any warnings from the device.
+    ///
+    /// Warnings are non-fatal messages (severity="warning") that the device
+    /// returns alongside a successful load.
+    pub async fn load_with_warnings(
+        &mut self,
+        payload: ConfigPayload,
+    ) -> Result<(String, Vec<RpcErrorInfo>), RustEzError> {
+        self.auto_open_if_needed().await?;
+
         let xml = build_load_xml(&payload);
         let timeout = self.timeout;
-        timed(timeout, self.client.rpc(&xml)).await
+        timed(timeout, self.client.rpc_with_warnings(&xml)).await
     }
 
     /// Show the candidate diff (uncommitted changes).
@@ -92,6 +159,42 @@ impl<'a> ConfigManager<'a> {
         let timeout = self.timeout;
         timed(timeout, self.client.rpc(&xml)).await
     }
+
+    /// Open a private or exclusive configuration database explicitly.
+    ///
+    /// Call this before [`load()`](Self::load) if you need exclusive mode.
+    /// For private mode, `load()` handles this automatically on clustered devices.
+    pub async fn open_configuration(
+        &mut self,
+        mode: OpenConfigurationMode,
+    ) -> Result<(), RustEzError> {
+        let timeout = self.timeout;
+        timed(timeout, self.client.open_configuration(mode)).await?;
+        *self.config_db_open = true;
+        Ok(())
+    }
+
+    /// Close a previously opened configuration database.
+    ///
+    /// No-op if no configuration database is open.
+    pub async fn close_configuration(&mut self) -> Result<(), RustEzError> {
+        if !*self.config_db_open {
+            return Ok(());
+        }
+        let timeout = self.timeout;
+        timed(timeout, self.client.close_configuration()).await?;
+        *self.config_db_open = false;
+        Ok(())
+    }
+
+    /// Auto-open a private configuration database if the device requires it.
+    async fn auto_open_if_needed(&mut self) -> Result<(), RustEzError> {
+        if self.client.requires_open_configuration() && !*self.config_db_open {
+            self.open_configuration(OpenConfigurationMode::Private)
+                .await?;
+        }
+        Ok(())
+    }
 }
 
 /// Run an async future with a timeout, converting to RustEzError.
@@ -107,8 +210,24 @@ async fn timed<T>(
     }
 }
 
+/// Map a `ConfigPayload` to `(LoadAction, LoadFormat, config_string)`.
+///
+/// The config string is XML-escaped for `Text` and `Set` payloads.
+fn payload_to_load_args(payload: &ConfigPayload) -> (LoadAction, LoadFormat, String) {
+    match payload {
+        ConfigPayload::Xml(xml) => (LoadAction::Merge, LoadFormat::Xml, xml.clone()),
+        ConfigPayload::Text(text) => {
+            (LoadAction::Merge, LoadFormat::Text, text.clone())
+        }
+        ConfigPayload::Set(set_cmds) => {
+            (LoadAction::Set, LoadFormat::Text, set_cmds.clone())
+        }
+    }
+}
+
 /// Build the `<load-configuration>` XML for a given payload.
 ///
+/// Used by `load_with_warnings()` (which needs raw RPC) and `rollback()`.
 /// `Text` and `Set` payloads are XML-escaped to prevent injection.
 /// `Xml` is passed through raw since it's explicitly raw XML by design.
 fn build_load_xml(payload: &ConfigPayload) -> String {
@@ -206,5 +325,30 @@ mod tests {
         let response = "<configuration-output></configuration-output>";
         let diff = parse_configuration_output(response);
         assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn test_payload_to_load_args_xml() {
+        let payload = ConfigPayload::Xml("<system/>".to_string());
+        let (action, format, config) = payload_to_load_args(&payload);
+        assert_eq!(action, LoadAction::Merge);
+        assert_eq!(format, LoadFormat::Xml);
+        assert_eq!(config, "<system/>");
+    }
+
+    #[test]
+    fn test_payload_to_load_args_text() {
+        let payload = ConfigPayload::Text("system { host-name foo; }".to_string());
+        let (action, format, _config) = payload_to_load_args(&payload);
+        assert_eq!(action, LoadAction::Merge);
+        assert_eq!(format, LoadFormat::Text);
+    }
+
+    #[test]
+    fn test_payload_to_load_args_set() {
+        let payload = ConfigPayload::Set("set system host-name foo".to_string());
+        let (action, format, _config) = payload_to_load_args(&payload);
+        assert_eq!(action, LoadAction::Set);
+        assert_eq!(format, LoadFormat::Text);
     }
 }
