@@ -123,9 +123,9 @@ impl<'a> ConfigManager<'a> {
     ///
     /// Returns `Some(diff)` if there are changes, `None` if clean.
     pub async fn diff(&mut self) -> Result<Option<String>, RustEzError> {
-        let xml = r#"<get-configuration compare="rollback" rollback="0" format="text"/>"#;
         let timeout = self.timeout;
-        let response: String = timed(timeout, self.client.rpc(xml)).await?;
+        let response: String =
+            timed(timeout, self.client.get_configuration_compare(0)).await?;
 
         let diff = parse_configuration_output(&response);
         if diff.is_empty() {
@@ -136,9 +136,12 @@ impl<'a> ConfigManager<'a> {
     }
 
     /// Commit the candidate configuration.
+    ///
+    /// Uses the Junos-native `<commit-configuration/>` RPC, which works
+    /// correctly with private and exclusive configuration databases.
     pub async fn commit(&mut self) -> Result<(), RustEzError> {
         let timeout = self.timeout;
-        timed(timeout, self.client.commit()).await
+        timed(timeout, self.client.commit_configuration()).await
     }
 
     /// Validate the candidate configuration without committing.
@@ -154,10 +157,9 @@ impl<'a> ConfigManager<'a> {
     }
 
     /// Rollback to a previous configuration.
-    pub async fn rollback(&mut self, id: u32) -> Result<String, RustEzError> {
-        let xml = format!(r#"<load-configuration rollback="{id}"/>"#);
+    pub async fn rollback(&mut self, id: u32) -> Result<(), RustEzError> {
         let timeout = self.timeout;
-        timed(timeout, self.client.rpc(&xml)).await
+        timed(timeout, self.client.rollback_configuration(id)).await
     }
 
     /// Open a private or exclusive configuration database explicitly.
@@ -227,7 +229,7 @@ fn payload_to_load_args(payload: &ConfigPayload) -> (LoadAction, LoadFormat, Str
 
 /// Build the `<load-configuration>` XML for a given payload.
 ///
-/// Used by `load_with_warnings()` (which needs raw RPC) and `rollback()`.
+/// Used by `load_with_warnings()` which needs raw RPC for warning extraction.
 /// `Text` and `Set` payloads are XML-escaped to prevent injection.
 /// `Xml` is passed through raw since it's explicitly raw XML by design.
 fn build_load_xml(payload: &ConfigPayload) -> String {
