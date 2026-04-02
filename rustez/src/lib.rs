@@ -38,4 +38,4 @@ pub use rpc::RpcExecutor;
 
 // Re-export rustnetconf types that users commonly need
 pub use rustnetconf::Datastore;
-pub use rustnetconf::{LoadAction, LoadFormat, OpenConfigurationMode, RpcErrorInfo};
+pub use rustnetconf::{LoadAction, LoadFormat, Notification, OpenConfigurationMode, RpcErrorInfo};

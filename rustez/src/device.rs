@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use rustnetconf::Client;
+use rustnetconf::{Client, Notification};
 
 use crate::config::ConfigManager;
 use crate::error::RustEzError;
@@ -186,6 +186,75 @@ impl Device {
         client.reconnect().await?;
         self.facts_cache = None;
         Ok(())
+    }
+
+    // ── Notification operations (RFC 5277) ───────────────────────────
+
+    /// Subscribe to device event notifications (RFC 5277).
+    ///
+    /// Requires the `:notification` capability on the device. After subscribing,
+    /// retrieve notifications with [`drain_notifications()`](Self::drain_notifications)
+    /// or [`recv_notification()`](Self::recv_notification).
+    pub async fn create_subscription(
+        &mut self,
+        stream: Option<&str>,
+        filter: Option<&str>,
+        start_time: Option<&str>,
+        stop_time: Option<&str>,
+    ) -> Result<(), RustEzError> {
+        let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
+        let timeout = self.rpc_timeout;
+        match tokio::time::timeout(
+            timeout,
+            client.create_subscription(stream, filter, start_time, stop_time),
+        )
+        .await
+        {
+            Ok(inner) => inner?,
+            Err(_) => {
+                return Err(RustEzError::Timeout(
+                    "create_subscription timed out".to_string(),
+                ))
+            }
+        }
+        Ok(())
+    }
+
+    /// Drain all buffered notifications, returning them and clearing the buffer.
+    ///
+    /// Notifications are buffered when they arrive during RPC exchanges.
+    #[allow(clippy::result_large_err)]
+    pub fn drain_notifications(&mut self) -> Result<Vec<Notification>, RustEzError> {
+        let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
+        Ok(client.drain_notifications())
+    }
+
+    /// Wait for the next notification from the device.
+    ///
+    /// Returns `Ok(None)` if the connection is closed.
+    pub async fn recv_notification(&mut self) -> Result<Option<Notification>, RustEzError> {
+        let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
+        let timeout = self.rpc_timeout;
+        match tokio::time::timeout(timeout, client.recv_notification()).await {
+            Ok(inner) => Ok(inner?),
+            Err(_) => Err(RustEzError::Timeout(
+                "recv_notification timed out".to_string(),
+            )),
+        }
+    }
+
+    /// Check if any notifications are buffered without blocking.
+    pub fn has_notifications(&self) -> bool {
+        self.client
+            .as_ref()
+            .is_some_and(|c| c.has_notifications())
+    }
+
+    /// Whether this session has an active notification subscription.
+    pub fn has_subscription(&self) -> bool {
+        self.client
+            .as_ref()
+            .is_some_and(|c| c.has_subscription())
     }
 
     /// Close the NETCONF session gracefully.

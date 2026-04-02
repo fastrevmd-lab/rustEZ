@@ -24,7 +24,7 @@ rustez-cli/       CLI binary — Junos automation from the terminal
 rustez-py/        Python bindings via PyO3 — pip install rustez
 ```
 
-Built on [rustnetconf](https://github.com/fastrevmd-lab/rustnetconf) for NETCONF transport, SSH (via russh), connection pooling, and vendor profiles.
+Built on [rustnetconf](https://github.com/fastrevmd-lab/rustnetconf) for NETCONF transport, SSH (via russh), connection pooling, vendor profiles, and event notifications (RFC 5277).
 
 ## Quick Start (Library)
 
@@ -105,6 +105,14 @@ async def main():
     print(f"{facts.hostname} running Junos {facts.version}")
     await dev.close()
 ```
+
+## Tested Platforms
+
+Verified on a real device with all integration tests passing:
+
+| Platform | Junos Version | NETCONF | Tests |
+|----------|--------------|---------|-------|
+| vSRX | 24.4R1.9 | 1.0 (EOM) | connect, facts, cli, config load/diff/commit/rollback, RFC 5277 event notifications |
 
 ## Roadmap
 

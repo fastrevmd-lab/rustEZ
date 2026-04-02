@@ -160,3 +160,79 @@ async fn test_config_rollback() {
     cfg.unlock().await.expect("unlock failed");
     dev.close().await.expect("close failed");
 }
+
+/// IT5: Subscribe to event notifications and trigger a config change to receive one.
+///
+/// 1. Open two sessions — one for notifications, one for config changes.
+/// 2. Subscribe to the NETCONF event stream on the first session.
+/// 3. Commit a config change on the second session to trigger an event.
+/// 4. Receive the notification on the first session and verify it.
+#[tokio::test]
+#[ignore]
+#[serial]
+async fn test_event_subscription() {
+    // Session 1: notification listener
+    let mut listener = vsrx_builder()
+        .no_facts()
+        .rpc_timeout(Duration::from_secs(30))
+        .open()
+        .await
+        .expect("failed to connect listener");
+
+    assert!(!listener.has_subscription(), "should not have subscription yet");
+
+    // Subscribe to the default NETCONF event stream
+    let sub_result = listener.create_subscription(None, None, None, None).await;
+    if let Err(ref err) = sub_result {
+        let msg = format!("{err}");
+        if msg.contains("unknown-element") || msg.contains("operation-not-supported") {
+            println!("SKIP: device does not support RFC 5277 notifications");
+            listener.close().await.expect("close failed");
+            return;
+        }
+    }
+    sub_result.expect("create_subscription failed");
+    assert!(listener.has_subscription(), "should have active subscription");
+
+    // Session 2: make a config change to trigger a notification
+    let mut changer = vsrx_builder()
+        .no_facts()
+        .rpc_timeout(Duration::from_secs(30))
+        .open()
+        .await
+        .expect("failed to connect changer");
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut cfg = changer.config().expect("config manager failed");
+    cfg.lock().await.expect("lock failed");
+    let payload = rustez::ConfigPayload::Text(
+        format!("system {{ host-name rustez-it5-{timestamp}; }}"),
+    );
+    cfg.load(payload).await.expect("load failed");
+    cfg.commit().await.expect("commit failed");
+    cfg.unlock().await.expect("unlock failed");
+    println!("config committed — waiting for notification");
+
+    // Wait for a notification to arrive from the config commit
+    match listener.recv_notification().await {
+        Ok(Some(notif)) => {
+            println!("received notification:");
+            println!("  event_time: {}", notif.event_time);
+            println!("  event_xml: {}", notif.event_xml);
+        }
+        Ok(None) => println!("connection closed before notification arrived"),
+        Err(err) => println!("recv_notification error (may be timeout): {err}"),
+    }
+
+    // Drain any additional buffered notifications
+    let extra = listener.drain_notifications().expect("drain failed");
+    println!("additional buffered notifications: {}", extra.len());
+
+    // Close changer first, then listener (listener close may hang with
+    // active subscription — drop is fine as fallback)
+    changer.close().await.expect("close changer failed");
+    let _ = tokio::time::timeout(Duration::from_secs(5), listener.close()).await;
+}

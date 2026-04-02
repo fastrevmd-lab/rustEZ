@@ -13,6 +13,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rustez = { path = "../rustez" }
-rustnetconf = "0.7.1"
+rustnetconf = "0.8.0"
 pyo3 = { version = "0.24", features = ["extension-module"] }
 tokio = { version = "1", features = ["full"] }
