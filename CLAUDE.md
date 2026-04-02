@@ -37,6 +37,7 @@ Auth: set `RUSTEZ_VSRX_KEY` for key-based or `RUSTEZ_VSRX_PASS` for password aut
 - **Per-RPC timeouts** — wrap every `client.rpc()` / `client.commit()` call in `tokio::time::timeout`. Default 30s.
 - **Config loading** — uses `client.load_configuration(action, format, config)` from rustnetconf 0.6. `build_load_xml()` retained only for `rollback()` and `load_with_warnings()`.
 - **ConfigPayload::Set** — maps to `LoadAction::Set, LoadFormat::Text`.
+- **Namespace prefix** — `build_load_xml()` uses `nc:` prefix on XML elements to match rustnetconf 0.7.1's `<nc:rpc>` envelope. Required for Junos 24.4 compatibility.
 - **Cluster auto-open** — `ConfigManager::load()` auto-calls `open_configuration(Private)` on clustered devices. `unlock()` auto-closes it. State tracked on `Device.config_db_open`.
 - **Warnings** — `RpcExecutor::call_with_warnings()` / `call_xml_with_warnings()` return `(String, Vec<RpcErrorInfo>)`. `ConfigManager::load_with_warnings()` does the same for config loads.
 

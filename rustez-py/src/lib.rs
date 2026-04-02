@@ -21,6 +21,11 @@ fn to_py_err(err: rustez::RustEzError) -> PyErr {
     PyRuntimeError::new_err(format!("{err}"))
 }
 
+/// Convert a NetconfError to a Python RuntimeError string.
+fn to_netconf_err(err: rustnetconf::NetconfError) -> PyErr {
+    PyRuntimeError::new_err(format!("{err}"))
+}
+
 /// Lock a Mutex, converting poison errors to Python RuntimeError.
 fn lock_mutex<T>(mutex: &Mutex<T>) -> PyResult<MutexGuard<'_, T>> {
     mutex
@@ -116,7 +121,7 @@ impl PyDevice {
     /// Check if the NETCONF session is alive (in-memory check, no RPC).
     fn session_alive(&self) -> PyResult<bool> {
         let guard = lock_mutex(&self.device)?;
-        Ok(guard.as_ref().map_or(false, |dev| dev.session_alive()))
+        Ok(guard.as_ref().is_some_and(|dev| dev.session_alive()))
     }
 
     /// Reconnect to the device using the original connection parameters.
@@ -143,7 +148,7 @@ impl PyDevice {
     /// Whether the device is part of a chassis cluster.
     fn is_cluster(&self) -> PyResult<bool> {
         let guard = lock_mutex(&self.device)?;
-        Ok(guard.as_ref().map_or(false, |dev| dev.is_cluster()))
+        Ok(guard.as_ref().is_some_and(|dev| dev.is_cluster()))
     }
 
     /// Return facts as a Python dict.
@@ -316,9 +321,12 @@ impl PyDevice {
         py.allow_threads(|| {
             let mut guard = lock_mutex(&self.device)?;
             let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-            let mut cfg = dev.config().map_err(to_py_err)?;
-            let diff = self.runtime.block_on(cfg.diff()).map_err(to_py_err)?;
-            Ok(diff.unwrap_or_default())
+            let client = dev.client_mut().map_err(to_py_err)?;
+            let response = self
+                .runtime
+                .block_on(client.get_configuration_compare(0))
+                .map_err(to_netconf_err)?;
+            Ok(response)
         })
     }
 
@@ -327,8 +335,10 @@ impl PyDevice {
         py.allow_threads(|| {
             let mut guard = lock_mutex(&self.device)?;
             let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-            let mut cfg = dev.config().map_err(to_py_err)?;
-            self.runtime.block_on(cfg.commit()).map_err(to_py_err)
+            let client = dev.client_mut().map_err(to_py_err)?;
+            self.runtime
+                .block_on(client.commit_configuration())
+                .map_err(to_netconf_err)
         })
     }
 
@@ -343,12 +353,14 @@ impl PyDevice {
     }
 
     /// Rollback to configuration N (0 = running).
-    fn config_rollback(&self, py: Python<'_>, id: u32) -> PyResult<String> {
+    fn config_rollback(&self, py: Python<'_>, id: u32) -> PyResult<()> {
         py.allow_threads(|| {
             let mut guard = lock_mutex(&self.device)?;
             let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
-            let mut cfg = dev.config().map_err(to_py_err)?;
-            self.runtime.block_on(cfg.rollback(id)).map_err(to_py_err)
+            let client = dev.client_mut().map_err(to_py_err)?;
+            self.runtime
+                .block_on(client.rollback_configuration(id))
+                .map_err(to_netconf_err)
         })
     }
 

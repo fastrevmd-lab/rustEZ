@@ -98,6 +98,15 @@ impl Device {
         Ok(RpcExecutor::new(client, self.rpc_timeout))
     }
 
+    /// Get direct mutable access to the underlying rustnetconf `Client`.
+    ///
+    /// Use this for operations that need native client methods without
+    /// going through `RpcExecutor` or `ConfigManager`.
+    #[allow(clippy::result_large_err)]
+    pub fn client_mut(&mut self) -> Result<&mut Client, RustEzError> {
+        self.client.as_mut().ok_or(RustEzError::NotConnected)
+    }
+
     /// Get a config manager for configuration operations.
     ///
     /// On chassis-clustered devices, the config manager will automatically

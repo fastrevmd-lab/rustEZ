@@ -6,6 +6,9 @@ use quick_xml::escape::escape;
 use rustnetconf::rpc::RpcErrorInfo;
 use rustnetconf::{Client, Datastore, LoadAction, LoadFormat, OpenConfigurationMode};
 
+/// XML namespace prefix used by rustnetconf for NETCONF RPCs.
+const NC: &str = "nc:";
+
 use crate::error::RustEzError;
 
 /// Transient config helper returned by [`Device::config()`](crate::Device::config).
@@ -230,23 +233,24 @@ fn payload_to_load_args(payload: &ConfigPayload) -> (LoadAction, LoadFormat, Str
 /// Build the `<load-configuration>` XML for a given payload.
 ///
 /// Used by `load_with_warnings()` which needs raw RPC for warning extraction.
+/// Uses `nc:` namespace prefix to match rustnetconf's RPC envelope.
 /// `Text` and `Set` payloads are XML-escaped to prevent injection.
 /// `Xml` is passed through raw since it's explicitly raw XML by design.
 fn build_load_xml(payload: &ConfigPayload) -> String {
     match payload {
         ConfigPayload::Xml(xml) => {
-            format!("<load-configuration>{xml}</load-configuration>")
+            format!("<{NC}load-configuration>{xml}</{NC}load-configuration>")
         }
         ConfigPayload::Text(text) => {
             let escaped = escape(text);
             format!(
-                r#"<load-configuration format="text"><configuration-text>{escaped}</configuration-text></load-configuration>"#
+                r#"<{NC}load-configuration format="text"><{NC}configuration-text>{escaped}</{NC}configuration-text></{NC}load-configuration>"#
             )
         }
         ConfigPayload::Set(set_cmds) => {
             let escaped = escape(set_cmds);
             format!(
-                r#"<load-configuration action="set" format="text"><configuration-set>{escaped}</configuration-set></load-configuration>"#
+                r#"<{NC}load-configuration action="set" format="text"><{NC}configuration-set>{escaped}</{NC}configuration-set></{NC}load-configuration>"#
             )
         }
     }
@@ -273,7 +277,7 @@ mod tests {
         let xml = build_load_xml(&payload);
         assert_eq!(
             xml,
-            "<load-configuration><system><host-name>test</host-name></system></load-configuration>"
+            "<nc:load-configuration><system><host-name>test</host-name></system></nc:load-configuration>"
         );
     }
 
@@ -282,7 +286,7 @@ mod tests {
         let payload = ConfigPayload::Text("system { host-name test; }".to_string());
         let xml = build_load_xml(&payload);
         assert!(xml.contains(r#"format="text""#));
-        assert!(xml.contains("<configuration-text>system { host-name test; }</configuration-text>"));
+        assert!(xml.contains("<nc:configuration-text>system { host-name test; }</nc:configuration-text>"));
     }
 
     #[test]
@@ -291,12 +295,12 @@ mod tests {
         let xml = build_load_xml(&payload);
         assert!(xml.contains(r#"action="set""#));
         assert!(xml.contains(r#"format="text""#));
-        assert!(xml.contains("<configuration-set>set system host-name test</configuration-set>"));
+        assert!(xml.contains("<nc:configuration-set>set system host-name test</nc:configuration-set>"));
     }
 
     #[test]
     fn test_build_load_xml_text_escapes_xml() {
-        let payload = ConfigPayload::Text("</configuration-text><delete-config/>".to_string());
+        let payload = ConfigPayload::Text("</nc:configuration-text><delete-config/>".to_string());
         let xml = build_load_xml(&payload);
         assert!(!xml.contains("<delete-config/>"));
         assert!(xml.contains("&lt;delete-config/&gt;"));
@@ -304,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_build_load_xml_set_escapes_xml() {
-        let payload = ConfigPayload::Set("</configuration-set><evil/>".to_string());
+        let payload = ConfigPayload::Set("</nc:configuration-set><evil/>".to_string());
         let xml = build_load_xml(&payload);
         assert!(!xml.contains("<evil/>"));
         assert!(xml.contains("&lt;evil/&gt;"));
