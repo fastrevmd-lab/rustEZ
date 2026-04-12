@@ -1,6 +1,6 @@
 [package]
 name = "rustez-py"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 authors = ["fastrevmd-lab"]
 description = "Python bindings for rustEZ — pip install rustez"
@@ -13,6 +13,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rustez = { path = "../rustez" }
-rustnetconf = "0.8.1"
+rustnetconf = "0.8.2"
 pyo3 = { version = "0.24", features = ["extension-module"] }
 tokio = { version = "1", features = ["full"] }
