@@ -10,28 +10,57 @@ permissions:
   contents: read
 
 jobs:
-  build-and-publish:
-    name: Build & publish (Linux x86_64)
+  build-manylinux:
+    name: Build manylinux (x86_64)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          manylinux: auto
+          args: --release -m rustez-py/Cargo.toml --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-manylinux-x86_64
+          path: dist/*.whl
+
+  build-musllinux:
+    name: Build musllinux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-unknown-linux-musl
+          manylinux: musllinux_1_2
+          args: --release -m rustez-py/Cargo.toml --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-musllinux-x86_64
+          path: dist/*.whl
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [build-manylinux, build-musllinux]
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-python@v5
+      - uses: actions/download-artifact@v4
         with:
-          python-version: "3.12"
-
-      - name: Install maturin
-        run: pip install maturin
-
-      - name: Build wheel
-        run: maturin build --release -m rustez-py/Cargo.toml
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: target/wheels/
+          packages-dir: dist/
