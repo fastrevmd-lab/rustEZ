@@ -39,7 +39,7 @@ jobs:
         with:
           target: x86_64-unknown-linux-musl
           manylinux: musllinux_1_2
-          args: --release -m rustez-py/Cargo.toml --out dist
+          args: --release -m rustez-py/Cargo.toml --out dist --find-interpreter
 
       - uses: actions/upload-artifact@v4
         with:
