@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "rustez"
-version = "0.8.3"
+version = "0.8.4"
 description = "Python bindings for rustEZ — Junos device automation built on Rust"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
@@ -14,3 +14,7 @@ dependencies = ["lxml>=4.9.0"]
 python-source = "python"
 module-name = "rustez._rustez_native"
 features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+pythonpath = ["python"]
+testpaths = ["tests"]

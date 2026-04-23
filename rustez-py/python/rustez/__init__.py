@@ -604,6 +604,10 @@ def _strip_namespaces(element):
         for attr_key in attribs_to_remove:
             local_name = attr_key.split("}", 1)[1]
             el.attrib[local_name] = el.attrib.pop(attr_key)
+    # Drop now-unused xmlns declarations so etree.tostring() emits clean XML.
+    # Without this, Junos treats a round-tripped subtree as a distinct
+    # namespaced phantom under load-configuration action="replace". See #14.
+    etree.cleanup_namespaces(element)
     return element
 
 
