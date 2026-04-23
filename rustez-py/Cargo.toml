@@ -1,6 +1,6 @@
 [package]
 name = "rustez-py"
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 authors = ["fastrevmd-lab"]
 description = "Python bindings for rustEZ — pip install rustez"

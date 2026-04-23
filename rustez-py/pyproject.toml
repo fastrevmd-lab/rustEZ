@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "rustez"
-version = "0.8.2"
+version = "0.8.3"
 description = "Python bindings for rustEZ — Junos device automation built on Rust"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"

@@ -1,6 +1,6 @@
 [package]
 name = "rustez"
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 authors = ["fastrevmd-lab"]
 description = "A Rust replacement for Juniper PyEZ — async-first Junos automation built on rustnetconf"
