@@ -15,6 +15,7 @@ use pyo3::prelude::*;
 
 use rustez::config::ConfigPayload;
 use rustez::{Device, OpenConfigurationMode};
+use rustnetconf::LoadAction;
 
 /// Convert a RustEzError to a Python RuntimeError string.
 fn to_py_err(err: rustez::RustEzError) -> PyErr {
@@ -300,7 +301,19 @@ impl PyDevice {
     }
 
     /// Load config. format: "set", "text", or "xml".
-    fn config_load(&self, py: Python<'_>, content: &str, format: &str) -> PyResult<String> {
+    ///
+    /// `action`: optional override for the load-configuration action —
+    /// one of "merge", "replace", "override", "update", "set". When `None`,
+    /// the default action derived from `format` is used (merge for text/xml,
+    /// set for set commands).
+    #[pyo3(signature = (content, format, action=None))]
+    fn config_load(
+        &self,
+        py: Python<'_>,
+        content: &str,
+        format: &str,
+        action: Option<&str>,
+    ) -> PyResult<String> {
         let payload = match format {
             "set" => ConfigPayload::Set(content.to_string()),
             "text" => ConfigPayload::Text(content.to_string()),
@@ -308,11 +321,31 @@ impl PyDevice {
             _ => return Err(PyRuntimeError::new_err(format!("unknown format: {format}"))),
         };
 
+        let action_override = match action {
+            None => None,
+            Some("merge") => Some(LoadAction::Merge),
+            Some("replace") => Some(LoadAction::Replace),
+            Some("override") => Some(LoadAction::Override),
+            Some("update") => Some(LoadAction::Update),
+            Some("set") => Some(LoadAction::Set),
+            Some(other) => {
+                return Err(PyRuntimeError::new_err(format!(
+                    "unknown action: {other}, use 'merge', 'replace', 'override', 'update', or 'set'"
+                )));
+            }
+        };
+
         py.allow_threads(|| {
             let mut guard = lock_mutex(&self.device)?;
             let dev = guard.as_mut().ok_or_else(|| PyRuntimeError::new_err("not connected"))?;
             let mut cfg = dev.config().map_err(to_py_err)?;
-            self.runtime.block_on(cfg.load(payload)).map_err(to_py_err)
+            let future = async {
+                match action_override {
+                    Some(act) => cfg.load_with_action(payload, act).await,
+                    None => cfg.load(payload).await,
+                }
+            };
+            self.runtime.block_on(future).map_err(to_py_err)
         })
     }
 

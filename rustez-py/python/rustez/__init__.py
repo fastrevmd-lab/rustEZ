@@ -15,10 +15,17 @@ Usage::
     dev.close()
 """
 
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
 from rustez._rustez_native import PyDevice as _PyDevice
 from rustez.exceptions import classify_error, ConfigLoadError
 
 from lxml import etree
+
+try:
+    __version__ = _pkg_version("rustez")
+except PackageNotFoundError:  # pragma: no cover - local/dev checkout
+    __version__ = "0.0.0+unknown"
 
 
 class _FactsDict(dict):
@@ -141,6 +148,31 @@ class _RpcProxy:
             rpc_xml += "/>"
 
         xml_str = self._native.rpc_xml(rpc_xml)
+        return _parse_xml(xml_str)
+
+    def raw_xml(self, xml: str):
+        """Send a raw XML RPC and return the parsed lxml response element.
+
+        Escape hatch for RPCs that aren't expressible via attribute access
+        (e.g. ``<load-configuration action="replace">``). Errors go through
+        ``classify_error`` so callers receive typed exceptions
+        (``ConnectError``, ``RpcError``, ``ConfigLoadError``, etc.) instead
+        of bare ``RuntimeError``.
+
+        Args:
+            xml: Raw XML RPC payload (inner element — no ``<rpc>`` envelope).
+
+        Returns:
+            lxml.etree.Element parsed from the response.
+
+        Raises:
+            RpcError / ConfigLoadError / ConnectError: Classified from the
+                native error string.
+        """
+        try:
+            xml_str = self._native.rpc_xml(xml)
+        except RuntimeError as exc:
+            raise classify_error(exc) from exc
         return _parse_xml(xml_str)
 
     def _do_named_rpc(self, name: str, kwargs: dict):
@@ -403,19 +435,42 @@ class Config:
         except RuntimeError as exc:
             raise classify_error(exc) from exc
 
-    def load(self, content: str, format: str = "xml", **kwargs) -> None:
+    def load(
+        self,
+        content: str,
+        format: str = "xml",
+        action: str | None = None,
+        **kwargs,
+    ) -> None:
         """Load configuration into the candidate datastore.
 
         Args:
-            content: Configuration content string.
-            format: Format — 'set', 'text', or 'xml'.
-            **kwargs: Ignored (PyEZ compat: overwrite, merge, etc.).
+            content: Configuration content string. For ``format="xml"``, an
+                outer ``<configuration>`` wrapper (as produced by PyEZ's
+                ``Config.load`` or ``show configuration | display xml``) is
+                detected and stripped — Junos receives exactly one
+                ``<configuration>`` envelope from the ``<load-configuration>``
+                RPC.
+            format: Format — ``'set'``, ``'text'``, or ``'xml'``.
+            action: Load action — ``'merge'`` (default for text/xml),
+                ``'replace'``, ``'override'``, ``'update'``, or ``'set'``
+                (default for set commands). When ``None``, the format's
+                default action is used.
 
         Raises:
             ConfigLoadError: If the load fails.
+            TypeError: If unknown keyword arguments are supplied.
         """
+        if kwargs:
+            unknown = ", ".join(sorted(kwargs))
+            raise TypeError(
+                f"Config.load() got unexpected keyword argument(s): {unknown}"
+            )
+
+        payload = _strip_outer_configuration(content) if format == "xml" else content
+
         try:
-            self._native.config_load(content, format)
+            self._native.config_load(payload, format, action)
         except RuntimeError as exc:
             typed = classify_error(exc)
             if not isinstance(typed, ConfigLoadError):
@@ -483,6 +538,48 @@ class Config:
             self._native.config_rollback(rb_id)
         except RuntimeError as exc:
             raise classify_error(exc) from exc
+
+
+def _strip_outer_configuration(xml_str: str) -> str:
+    """Strip a single outer ``<configuration>`` element, returning its children.
+
+    rustnetconf's ``<load-configuration>`` RPC already wraps the payload in
+    ``<nc:configuration>...</nc:configuration>``. PyEZ-style callers often
+    pass content that's already wrapped (e.g. output from
+    ``show configuration | display xml``), which double-wraps on the wire
+    and causes Junos to reject the RPC with
+    ``syntax error, expecting </configuration>``.
+
+    If the payload's root is ``<configuration>`` (with or without
+    attributes/namespaces), this returns the serialized children. Otherwise
+    the input is returned unchanged so unwrapped payloads still work.
+
+    Args:
+        xml_str: XML config payload.
+
+    Returns:
+        The inner content if outer ``<configuration>`` was stripped,
+        else the original string.
+    """
+    stripped = xml_str.strip()
+    if not stripped:
+        return xml_str
+
+    try:
+        root = etree.fromstring(stripped.encode("utf-8"))
+    except etree.XMLSyntaxError:
+        return xml_str
+
+    tag = root.tag
+    if isinstance(tag, str) and "}" in tag:
+        tag = tag.split("}", 1)[1]
+    if tag != "configuration":
+        return xml_str
+
+    inner = b"".join(etree.tostring(child) for child in root)
+    if root.text and root.text.strip():
+        inner = root.text.encode("utf-8") + inner
+    return inner.decode("utf-8")
 
 
 def _strip_namespaces(element):
