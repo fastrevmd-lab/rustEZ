@@ -1,6 +1,6 @@
 [package]
 name = "rustez"
-version = "0.14.3"
+version = "0.15.0"
 edition = "2021"
 authors = ["fastrevmd-lab"]
 description = "A Rust replacement for Juniper PyEZ — async-first Junos automation built on rustnetconf"
@@ -11,7 +11,7 @@ categories = ["network-programming"]
 rust-version = "1.79"
 
 [dependencies]
-rustnetconf = "0.14.3"
+rustnetconf = "0.15.0"
 tokio = { version = "1", features = ["full"] }
 quick-xml = "0.41"
 thiserror = "2"

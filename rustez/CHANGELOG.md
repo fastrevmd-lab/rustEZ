@@ -5,6 +5,74 @@ All notable changes to the `rustez` crate are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-08-26
+
+### Changed
+
+- **BREAKING: `rustnetconf` raised to `0.15`, which reshapes one error variant.**
+  `RpcError::ServerError` became a tuple variant carrying a boxed struct
+  ([rustnetconf#66](https://github.com/fastrevmd-lab/rustnetconf/issues/66)). Its
+  seven RFC 6241 §4.3 fields moved into a new public `RpcServerError`; the fields
+  themselves are unchanged, still public, and still all present.
+
+  rustEZ has no `ServerError` construction or match of its own, but it re-exposes
+  the type: `RustEzError::Netconf` wraps `NetconfError` with `#[from]`, so a
+  caller matching through it must update.
+
+  ```rust
+  // before
+  Err(RustEzError::Netconf(NetconfError::Rpc(RpcError::ServerError { tag, message, .. }))) => ...
+
+  // after
+  Err(RustEzError::Netconf(NetconfError::Rpc(RpcError::ServerError(e)))) => ... // e.tag, e.message
+  ```
+
+  `Display` output is byte-for-byte what it was, so anything matching on the error
+  *string* is unaffected.
+
+- **Removed six `#[allow(clippy::result_large_err)]` suppressions**
+  (`rustez/src/device.rs` ×4, `rustez/src/rpc.rs` ×2). They existed only because
+  `NetconfError` measured exactly 128 bytes — clippy's threshold — which
+  `RustEzError` inherited through its `#[from]` variant. Boxing upstream takes
+  `NetconfError` to 72, so the lint is satisfied on the merits rather than
+  silenced, and every `Result<T, RustEzError>` in the crate stops moving 128
+  bytes on the success path.
+
+  This also **unblocks CI.** The suppressions covered 6 sites; clippy 1.98.0
+  flagged 34, so `cargo clippy -p rustez -- -D warnings` and the same gate on
+  `rustez-py` were both failing on `main` — unnoticed because CI had not run
+  since 2026-08-20, before stable moved to 1.98.0.
+
+### Fixed
+
+Two device-facing bugs, both fixed upstream and reaching rustEZ only now because
+the floor was still `0.14.3`:
+
+- **A benign Junos warning no longer sinks an entire config load**
+  ([rustnetconf#67](https://github.com/fastrevmd-lab/rustnetconf/issues/67), 0.14.5).
+  Deleting a statement that is not present returns an `<rpc-error>` carrying only
+  severity and message; RFC 6241 makes `error-type` and `error-tag` mandatory and
+  Junos omits both, so the reply was rejected outright and the load failed.
+  `ConfigManager::load_with_warnings()` is exactly this path, which makes rustEZ
+  unusually exposed — it exists to surface warnings, and a warning was fatal.
+
+- **A standalone SRX's commit-check verdict is no longer discarded**
+  ([rustnetconf#65](https://github.com/fastrevmd-lab/rustnetconf/issues/65), 0.14.4).
+  A single-RE SRX345 answers a commit-check with a closed `<commit-results>`
+  followed by a sibling `<ok/>`; the reply failed to parse and a passing check
+  was thrown away. The chassis-cluster form already worked, so a device that
+  closed the element *correctly* fared worse than one that did not.
+
+### Documentation
+
+- Corrected the dependency tables, which had drifted badly — `rustnetconf` was
+  listed as `0.10` against an actual floor of `0.14.3`, alongside stale `pyo3`,
+  `quick-xml`, and `rustez` rows, and a missing `serde` entry.
+- Rewrote the security-audit section. It advertised RUSTSEC-2023-0071 against
+  `rsa` 0.10.0-rc.16 and claimed CI ignored it via `cargo audit --ignore`;
+  `rsa` is no longer in the tree, the audit is clean across 237 dependencies,
+  and no such ignore exists in the workflow.
+
 ## [0.14.3] — 2026-08-20
 
 ### Changed
@@ -289,6 +357,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was `AcceptAll`. Since `rustnetconf 0.11` the default has been `RejectAll`
   (fail-closed); the docs now reflect this.
 
+[0.15.0]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.0...v0.14.1

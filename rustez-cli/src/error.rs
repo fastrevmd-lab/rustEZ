@@ -126,7 +126,7 @@ pub fn classify(err: &RustEzError, phase: Phase) -> ErrorKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustnetconf::error::{NetconfError, RpcError, TransportError};
+    use rustnetconf::error::{NetconfError, RpcError, RpcServerError, TransportError};
 
     #[test]
     fn exit_codes_are_distinct_and_match_spec() {
@@ -168,15 +168,17 @@ mod tests {
 
     #[test]
     fn server_error_uses_phase_during_load() {
-        let err = RustEzError::Netconf(NetconfError::Rpc(RpcError::ServerError {
-            error_type: None,
-            tag: rustnetconf::types::ErrorTag::OperationFailed,
-            severity: None,
-            app_tag: None,
-            path: None,
-            message: "config rejected".into(),
-            info: None,
-        }));
+        let err = RustEzError::Netconf(NetconfError::Rpc(RpcError::ServerError(Box::new(
+            RpcServerError {
+                error_type: None,
+                tag: rustnetconf::types::ErrorTag::OperationFailed,
+                severity: None,
+                app_tag: None,
+                path: None,
+                message: "config rejected".into(),
+                info: None,
+            },
+        ))));
         assert_eq!(classify(&err, Phase::Load), ErrorKind::Load);
         assert_eq!(classify(&err, Phase::Commit), ErrorKind::Commit);
         assert_eq!(classify(&err, Phase::Rollback), ErrorKind::Rollback);
