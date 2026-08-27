@@ -95,10 +95,28 @@ Two registries, two paths. PyPI is automated on tag push; crates.io is manual by
    cargo publish -p rustez             # actual upload — irreversible (yank-only)
    ```
    Uses the local token in `~/.cargo/credentials.toml`. `rustez-py` is PyPI-only. `rustez-cli` (0.1.0) is not on crates.io.
-6. **Verify both registries:**
+6. **Create the GitHub Release** — a tag is not a release, and this step is easy
+   to skip because nothing fails without it:
+   ```sh
+   gh release create vX.Y.Z --title "vX.Y.Z — <short theme>" --notes-file <(...)
+   ```
+   Draw the notes from the `rustez/CHANGELOG.md` section for that version, and
+   title it the way rustnetconf does — `v0.15.0 — smaller error types`, not the
+   bare version. Mark it `--latest` only if it really is the newest.
+
+   **Why this is called out:** it was missing from this list for the crate's
+   whole history, and the result was 13 tags and zero releases while the
+   changelog, tags, and both registries stayed in sync. Nothing breaks — the
+   crate just has no readable release history, and anyone watching the repo for
+   releases gets nothing.
+7. **Verify all three surfaces:**
    ```sh
    curl -sH "User-Agent: rustez-release-check" https://crates.io/api/v1/crates/rustez | jq '.crate.max_version'
    pip index versions rustez   # or: pip install rustez==X.Y.Z in a fresh venv
+   gh release view vX.Y.Z --json tagName,name --jq '.tagName + "  " + .name'
    ```
+   Manifest, tag, GitHub Release, and crates.io should all report the same
+   version. Drift in any one of them is the thing this checklist exists to
+   prevent.
 
 **Yanking:** Use `cargo yank --version X.Y.Z -p rustez` only for broken or unsafe releases. PyPI has no yank for releases — request deletion via the PyPI UI (or release a patch instead).
