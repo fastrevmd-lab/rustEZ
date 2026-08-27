@@ -5,6 +5,44 @@ All notable changes to the `rustez` crate are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Corrected `rust-version` from `1.79` to `1.85`.** The declared MSRV was
+  wrong and had never been tested. `cargo +1.79.0 check -p rustez` fails before
+  it compiles anything:
+
+  ```
+  feature `edition2024` is required
+  The package requires the Cargo feature called `edition2024`, but that
+  feature is not stabilized in this version of Cargo (1.79.0)
+  ```
+
+  It arrives through `argon2` ← `ssh-key` ← `russh` ← `rustnetconf`. The floor
+  was measured rather than guessed: 1.84.0 fails, 1.85.0 passes — which is
+  exactly where `edition2024` stabilized. Verified against a *fresh* dependency
+  resolution, not just the existing lockfile, since `Cargo.lock` is not
+  committed and CI resolves from scratch.
+
+  Nothing changed in the code; the previous number was simply not true, so
+  anyone who trusted it was told rustEZ supported six releases it did not.
+
+### Added
+
+- **CI now verifies the MSRV** (`cargo +1.85.0 check -p rustez`), so the number
+  in `Cargo.toml` is a tested claim rather than a comment.
+- **CI now runs `cargo fmt --all -- --check`.** It never had a formatting gate,
+  and `main` had drifted across 9 files / 14 hunks. Drift is corrected in this
+  change; the gate stops it recurring.
+
+### Removed
+
+- **The `cargo audit --ignore RUSTSEC-2023-0071` flag.** `rsa` is no longer in
+  the dependency tree at any depth, and `cargo audit` passes clean unsuppressed.
+  The entry in `.cargo/audit-ignored.md` is marked retired rather than deleted,
+  keeping the original reachability assessment readable.
+
 ## [0.15.0] — 2026-08-26
 
 ### Changed

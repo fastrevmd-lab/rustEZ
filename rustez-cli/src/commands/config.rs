@@ -22,10 +22,7 @@ fn read_payload(file: &str, format: ConfigFormat) -> Result<ConfigPayload, CliEr
 
 /// Lock, load (capturing warnings). On error, the caller closes the device,
 /// which releases the candidate lock — so no explicit unlock on the error path.
-async fn lock_and_load(
-    dev: &mut Device,
-    payload: ConfigPayload,
-) -> Result<Vec<String>, CliError> {
+async fn lock_and_load(dev: &mut Device, payload: ConfigPayload) -> Result<Vec<String>, CliError> {
     let mut cfg = dev
         .config()
         .map_err(|e| CliError::from_rustez(&e, Phase::Load))?;

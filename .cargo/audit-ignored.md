@@ -7,9 +7,21 @@ Re-evaluate every entry on or before the listed `Review by` date.
 CI references this file via the `cargo audit --ignore <ID>` flag in
 `.github/workflows/ci.yml`. Keep the flags in sync with the list below.
 
+**There are currently no active ignores**, and `cargo audit` runs unsuppressed.
+Retired entries are kept below with the reason they were retired, so the history
+of what was once accepted stays readable.
+
 ---
 
-## RUSTSEC-2023-0071 — `rsa 0.10.0-rc.16` (Marvin Attack)
+## RETIRED 2026-08-26 — RUSTSEC-2023-0071 — `rsa 0.10.0-rc.16` (Marvin Attack)
+
+> **Retired because the crate left the dependency tree.** `russh` reworked its
+> crypto dependencies and `rsa` is no longer reachable from `rustez` at any
+> depth (`cargo tree -i rsa` matches nothing); `cargo audit` passes clean with
+> no `--ignore`. The flag was removed from `.github/workflows/ci.yml`. A
+> standing ignore for an absent crate is worse than none — it would silently
+> suppress this advisory if the crate ever came back. The assessment below is
+> preserved as written at the time it was active.
 
 - **Advisory:** https://github.com/RustCrypto/RSA/issues/626
 - **CVSS:** 3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N (medium; network-reachable,

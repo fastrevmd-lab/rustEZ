@@ -4,7 +4,11 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Top-level CLI entrypoint.
 #[derive(Parser, Debug)]
-#[command(name = "rustez", version, about = "Junos device automation from the terminal")]
+#[command(
+    name = "rustez",
+    version,
+    about = "Junos device automation from the terminal"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -222,7 +226,14 @@ mod tests {
     #[test]
     fn parses_rpc_command_and_format() {
         let cli = Cli::try_parse_from([
-            "rustez", "rpc", "10.0.0.1", "show interfaces terse", "-u", "admin", "--format", "xml",
+            "rustez",
+            "rpc",
+            "10.0.0.1",
+            "show interfaces terse",
+            "-u",
+            "admin",
+            "--format",
+            "xml",
         ])
         .unwrap();
         match &cli.command {
@@ -252,8 +263,17 @@ mod tests {
     #[test]
     fn parses_config_commit_with_confirm() {
         let cli = Cli::try_parse_from([
-            "rustez", "config", "commit", "10.0.0.1", "-u", "admin", "-f", "c.set",
-            "--confirm-minutes", "5", "--json",
+            "rustez",
+            "config",
+            "commit",
+            "10.0.0.1",
+            "-u",
+            "admin",
+            "-f",
+            "c.set",
+            "--confirm-minutes",
+            "5",
+            "--json",
         ])
         .unwrap();
         assert_eq!(cli.command_name(), "config commit");
@@ -270,8 +290,18 @@ mod tests {
     #[test]
     fn confirm_minutes_and_comment_are_mutually_exclusive() {
         let res = Cli::try_parse_from([
-            "rustez", "config", "commit", "10.0.0.1", "-u", "admin", "-f", "c.set",
-            "--confirm-minutes", "5", "--comment", "change-123",
+            "rustez",
+            "config",
+            "commit",
+            "10.0.0.1",
+            "-u",
+            "admin",
+            "-f",
+            "c.set",
+            "--confirm-minutes",
+            "5",
+            "--comment",
+            "change-123",
         ]);
         assert!(
             res.is_err(),
@@ -281,8 +311,8 @@ mod tests {
 
     #[test]
     fn rollback_id_defaults_to_zero() {
-        let cli =
-            Cli::try_parse_from(["rustez", "config", "rollback", "10.0.0.1", "-u", "admin"]).unwrap();
+        let cli = Cli::try_parse_from(["rustez", "config", "rollback", "10.0.0.1", "-u", "admin"])
+            .unwrap();
         match &cli.command {
             Command::Config(c) => match &c.command {
                 ConfigCommand::Rollback(a) => assert_eq!(a.id, 0),

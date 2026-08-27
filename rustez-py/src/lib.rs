@@ -122,8 +122,9 @@ impl PyDevice {
                         builder = builder.key_file(key_path);
                     }
                     if let Some(ref fingerprint) = self.host_key_fingerprint {
-                        builder = builder
-                            .host_key_verification(HostKeyVerification::Fingerprint(fingerprint.clone()));
+                        builder = builder.host_key_verification(HostKeyVerification::Fingerprint(
+                            fingerprint.clone(),
+                        ));
                     } else if let Some(ref path) = self.host_key_known_hosts {
                         builder = builder.host_key_verification(HostKeyVerification::KnownHosts(
                             PathBuf::from(path),

@@ -56,7 +56,8 @@ impl<'a> RpcExecutor<'a> {
     /// operations. For read-only RPCs or operations targeting other datastores,
     /// use [`call_xml()`](Self::call_xml) instead.
     pub async fn call_xml_candidate_change(&mut self, xml: &str) -> Result<String, RustEzError> {
-        let result = tokio::time::timeout(self.timeout, self.client.rpc_candidate_change(xml)).await;
+        let result =
+            tokio::time::timeout(self.timeout, self.client.rpc_candidate_change(xml)).await;
         match result {
             Ok(inner) => Ok(inner?),
             Err(_) => Err(RustEzError::Timeout(format!(
