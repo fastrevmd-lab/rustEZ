@@ -216,33 +216,42 @@ Verified on a real device with all integration tests passing:
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| [rustnetconf](https://github.com/fastrevmd-lab/rustnetconf) | 0.10 | NETCONF client (SSH transport, RFC 6241/5277) |
-| [tokio](https://crates.io/crates/tokio) | 1.50 | Async runtime |
-| [quick-xml](https://crates.io/crates/quick-xml) | 0.37 | XML parsing |
-| [thiserror](https://crates.io/crates/thiserror) | 2.0 | Error derive macros |
+| [rustnetconf](https://github.com/fastrevmd-lab/rustnetconf) | 0.15 | NETCONF client (SSH transport, RFC 6241/5277) |
+| [tokio](https://crates.io/crates/tokio) | 1 | Async runtime |
+| [quick-xml](https://crates.io/crates/quick-xml) | 0.41 | XML parsing |
+| [thiserror](https://crates.io/crates/thiserror) | 2 | Error derive macros |
 | [tracing](https://crates.io/crates/tracing) | 0.1 | Structured logging |
-| [serial_test](https://crates.io/crates/serial_test) | 3.4 | Sequential integration tests (dev only) |
+| [serde](https://crates.io/crates/serde) | 1 | `Serialize` derive on `Facts` and friends |
+| [serial_test](https://crates.io/crates/serial_test) | 3 | Sequential integration tests (dev only) |
 
 ### rustez-py (Python bindings)
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| [pyo3](https://crates.io/crates/pyo3) | 0.24 | Python FFI bindings |
-| rustez | 0.9.0 | Core library |
-| rustnetconf | 0.10 | NETCONF client |
-| tokio | 1.50 | Async runtime |
+| [pyo3](https://crates.io/crates/pyo3) | 0.29 | Python FFI bindings |
+| rustez | 0.15.0 | Core library |
+| rustnetconf | 0.15 | NETCONF client |
+| tokio | 1 | Async runtime |
 
 Python runtime dependency: [lxml](https://pypi.org/project/lxml/) >= 4.9.0
 
 ## Security Audit
 
-Last audited: 2026-05-06 via `cargo audit` (runs in CI on every PR)
+Last audited: 2026-08-26 via `cargo audit` — **no known advisories** across 237
+dependencies. `cargo audit` and `cargo deny` both run in CI on every PR, with no
+advisory ignores configured.
 
-| Severity | Crate | Advisory | Description | Fix Available |
-|----------|-------|----------|-------------|---------------|
-| Medium (5.9) | `rsa` 0.10.0-rc.16 | [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071) | Marvin Attack — potential key recovery through timing sidechannels | No upstream fix yet |
+The previously listed RUSTSEC-2023-0071 (Marvin Attack, `rsa` 0.10.0-rc.16) no
+longer applies: `rsa` is not in the dependency tree at all, having left when
+`russh` reworked its crypto dependencies. The `cargo audit --ignore` that this
+section used to describe is not in the workflow either.
 
-Transitive dependency through `russh` (used by rustnetconf for SSH transport). Not directly exploitable in rustEZ's use case — connections are to managed network devices, not public-facing services. Will resolve when upstream `russh` updates its dependency tree. Ignored in CI via `cargo audit --ignore RUSTSEC-2023-0071`.
+One supply-chain item is tracked but not actionable: `russh` reaches SSH key
+handling through `ssh-key`, which is still on a release-candidate line
+(`0.7.0-rc.11`), pulling prerelease `argon2` and `blake2` with it. Nothing is
+known to be wrong with those versions, and the fix is upstream — this closes
+when `ssh-key` 0.7.0 goes stable, not when `russh` releases. Tracked at
+[rustnetconf#64](https://github.com/fastrevmd-lab/rustnetconf/issues/64).
 
 Run `cargo audit` to check for the latest advisories.
 

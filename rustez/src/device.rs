@@ -163,7 +163,6 @@ impl Device {
     }
 
     /// Get an RPC executor for sending arbitrary RPCs.
-    #[allow(clippy::result_large_err)]
     pub fn rpc(&mut self) -> Result<RpcExecutor<'_>, RustEzError> {
         let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
         Ok(RpcExecutor::new(client, self.rpc_timeout))
@@ -173,7 +172,6 @@ impl Device {
     ///
     /// Use this for operations that need native client methods without
     /// going through `RpcExecutor` or `ConfigManager`.
-    #[allow(clippy::result_large_err)]
     pub fn client_mut(&mut self) -> Result<&mut Client, RustEzError> {
         self.client.as_mut().ok_or(RustEzError::NotConnected)
     }
@@ -184,7 +182,6 @@ impl Device {
     /// open a private configuration database before loading config and
     /// close it on unlock. Use [`open_configuration()`](Self::open_configuration)
     /// for explicit control (e.g., exclusive mode).
-    #[allow(clippy::result_large_err)]
     pub fn config(&mut self) -> Result<ConfigManager<'_>, RustEzError> {
         let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
         Ok(ConfigManager::new(
@@ -301,7 +298,6 @@ impl Device {
     /// Drain all buffered notifications, returning them and clearing the buffer.
     ///
     /// Notifications are buffered when they arrive during RPC exchanges.
-    #[allow(clippy::result_large_err)]
     pub fn drain_notifications(&mut self) -> Result<Vec<Notification>, RustEzError> {
         let client = self.client.as_mut().ok_or(RustEzError::NotConnected)?;
         Ok(client.drain_notifications())

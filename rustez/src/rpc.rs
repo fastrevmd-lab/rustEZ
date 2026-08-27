@@ -117,7 +117,6 @@ impl<'a> RpcExecutor<'a> {
 /// Underscores in the RPC name and argument keys are converted to hyphens.
 /// Names and keys are validated to prevent XML injection. Values are
 /// XML-escaped.
-#[allow(clippy::result_large_err)]
 pub fn build_rpc_xml(rpc_name: &str, args: &[(&str, &str)]) -> Result<String, RustEzError> {
     let hyphenated_name = rpc_name.replace('_', "-");
     validate_xml_name(&hyphenated_name)?;
@@ -143,7 +142,6 @@ pub fn build_rpc_xml(rpc_name: &str, args: &[(&str, &str)]) -> Result<String, Ru
 ///
 /// Allows alphanumeric characters, hyphens, underscores, and dots.
 /// Names must start with a letter or underscore per the XML specification.
-#[allow(clippy::result_large_err)]
 fn validate_xml_name(name: &str) -> Result<(), RustEzError> {
     if name.is_empty() {
         return Err(RustEzError::Rpc("XML name cannot be empty".to_string()));
