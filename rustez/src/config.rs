@@ -144,7 +144,11 @@ impl<'a> ConfigManager<'a> {
         let opened_here = self.auto_open_if_needed().await?;
 
         let timeout = self.timeout;
-        let result = timed(timeout, self.client.rpc_candidate_change_with_warnings(&xml)).await;
+        let result = timed(
+            timeout,
+            self.client.rpc_candidate_change_with_warnings(&xml),
+        )
+        .await;
         if result.is_err() {
             self.close_auto_opened_on_error(opened_here).await;
         }
@@ -405,9 +409,6 @@ mod tests {
         assert!(!xml.contains("<evil/>"));
         assert!(xml.contains("&lt;evil/&gt;"));
     }
-
-
-
 
     #[test]
     fn test_parse_diff_with_content() {

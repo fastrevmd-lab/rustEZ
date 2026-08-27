@@ -243,8 +243,10 @@ advisory ignores configured.
 
 The previously listed RUSTSEC-2023-0071 (Marvin Attack, `rsa` 0.10.0-rc.16) no
 longer applies: `rsa` is not in the dependency tree at all, having left when
-`russh` reworked its crypto dependencies. The `cargo audit --ignore` that this
-section used to describe is not in the workflow either.
+`russh` reworked its crypto dependencies. `cargo audit` passes clean without any
+`--ignore`, so the flag that suppressed it has been removed from CI along with
+its entry in `.cargo/audit-ignored.md` — a standing ignore for a crate that is
+gone would silently suppress the advisory if the crate ever returned.
 
 One supply-chain item is tracked but not actionable: `russh` reaches SSH key
 handling through `ssh-key`, which is still on a release-candidate line

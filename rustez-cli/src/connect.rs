@@ -81,8 +81,9 @@ pub async fn build_device(conn: &ConnOpts, gather_facts: bool) -> Result<Device,
         PasswordPlan::KeyOnly => None,
         PasswordPlan::Prompt => {
             let prompt = format!("Password for {}@{}: ", conn.user, conn.host);
-            let pw = rpassword::prompt_password(prompt)
-                .map_err(|e| CliError::new(ErrorKind::Usage, format!("failed to read password: {e}")))?;
+            let pw = rpassword::prompt_password(prompt).map_err(|e| {
+                CliError::new(ErrorKind::Usage, format!("failed to read password: {e}"))
+            })?;
             Some(pw)
         }
     };

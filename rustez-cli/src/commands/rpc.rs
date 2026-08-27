@@ -10,7 +10,9 @@ pub async fn run(args: &RpcArgs) -> Result<CommandData, CliError> {
     let mut dev = build_device(&args.conn, false).await?;
     let format = args.format.as_junos();
     let output = {
-        let mut executor = dev.rpc().map_err(|e| CliError::from_rustez(&e, Phase::Rpc))?;
+        let mut executor = dev
+            .rpc()
+            .map_err(|e| CliError::from_rustez(&e, Phase::Rpc))?;
         executor
             .cli(&args.rpc_command, format)
             .await

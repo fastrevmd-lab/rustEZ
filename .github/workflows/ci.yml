@@ -40,19 +40,44 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit
 
-      # Ignored advisories — see .cargo/audit-ignored.md for full
-      # reachability analysis, mitigations, and review dates. Keep the
-      # --ignore flags below in sync with that file.
-      #
-      # RUSTSEC-2023-0071 — rsa 0.10.0-rc.16 Marvin timing side-channel.
-      #   Reached via russh's SSH host-key/RSA-auth path; no upstream patch.
-      #   Review by 2026-11-18.
-      - name: Surface ignored advisories
-        run: |
-          echo "::warning::cargo audit ignores RUSTSEC-2023-0071 — see .cargo/audit-ignored.md"
-
+      # No advisories are ignored. RUSTSEC-2023-0071 (rsa Marvin attack) was
+      # ignored here until `rsa` left the dependency tree entirely when russh
+      # reworked its crypto; `cargo audit` now passes clean unsuppressed. See
+      # .cargo/audit-ignored.md for the retired entry. If an ignore is ever
+      # needed again, document it there first and keep the flags in sync.
       - name: cargo audit
-        run: cargo audit --ignore RUSTSEC-2023-0071
+        run: cargo audit
+
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt (check)
+        run: cargo fmt --all -- --check
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85.0"
+
+      # `cargo +1.85.0` rather than a bare `cargo`: rust-toolchain.toml pins
+      # 1.98.0 and outranks the `rustup default` that the action sets, so a
+      # bare invocation would silently test 1.98 and this job would prove
+      # nothing. An explicit +toolchain is the one thing that beats the file.
+      - name: cargo check at the declared MSRV
+        run: cargo +1.85.0 check -p rustez
 
   python-bindings:
     name: Python bindings (pytest)

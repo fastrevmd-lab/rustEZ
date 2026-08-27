@@ -263,7 +263,10 @@ mod tests {
         assert_eq!(engines[0].slot, None);
         assert_eq!(engines[0].status, "Testing");
         assert_eq!(engines[0].model.as_deref(), Some("VSRX RE"));
-        assert_eq!(engines[0].uptime.as_deref(), Some("12 hours, 31 minutes, 9 seconds"));
+        assert_eq!(
+            engines[0].uptime.as_deref(),
+            Some("12 hours, 31 minutes, 9 seconds")
+        );
 
         // Single RE with no mastership state should be master
         assert_eq!(find_master_re(&engines), Some(0));

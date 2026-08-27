@@ -43,7 +43,9 @@ fn facts_json_against_vsrx() {
     assert_eq!(v["ok"], true);
     assert_eq!(v["command"], "facts");
     assert!(
-        v["data"]["hostname"].as_str().is_some_and(|h| !h.is_empty()),
+        v["data"]["hostname"]
+            .as_str()
+            .is_some_and(|h| !h.is_empty()),
         "expected non-empty hostname, got {v}"
     );
 }
