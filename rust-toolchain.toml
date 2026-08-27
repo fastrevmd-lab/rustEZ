@@ -1,0 +1,20 @@
+# Pinned so a new stable clippy cannot turn CI red without a deliberate bump
+# here first. rustEZ learned this the hard way: clippy 1.98.0 tightened
+# `result_large_err` and left `main` failing its own gate for six days, unseen,
+# because no CI run happened between the toolchain moving and someone looking.
+#
+# Most of the fleet already pins — rustnetconf, RustJunosMCP, rust-panosmcp,
+# rustsdcmcp, rustmistmcp, rustproxmoxmcp and mecmcp are all on 1.98.0. A few
+# are still on 1.97.x (entsafemcp, ModelMeshSec, rustsdonpremmcp), so "the fleet
+# pins the same way" is true of the habit, not yet of the version.
+#
+# CI installs `stable` via dtolnay/rust-toolchain, which calls `rustup default`.
+# A rust-toolchain.toml outranks the rustup default, so this file is what
+# actually selects the toolchain; the components below come with it, which makes
+# the workflows' `components:` inputs redundant but harmless.
+#
+# Note this pins the *gate*, not the MSRV — rustez/Cargo.toml still declares
+# rust-version = "1.79", and nothing here verifies that floor.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]
