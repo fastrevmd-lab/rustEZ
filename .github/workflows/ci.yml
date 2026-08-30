@@ -62,7 +62,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   msrv:
-    name: MSRV (1.85)
+    name: MSRV (1.86)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -70,14 +70,14 @@ jobs:
       - name: Install the MSRV toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.85.0"
+          toolchain: "1.86.0"
 
-      # `cargo +1.85.0` rather than a bare `cargo`: rust-toolchain.toml pins
+      # `cargo +1.86.0` rather than a bare `cargo`: rust-toolchain.toml pins
       # 1.98.0 and outranks the `rustup default` that the action sets, so a
       # bare invocation would silently test 1.98 and this job would prove
       # nothing. An explicit +toolchain is the one thing that beats the file.
       - name: cargo check at the declared MSRV
-        run: cargo +1.85.0 check -p rustez
+        run: cargo +1.86.0 check -p rustez
 
   python-bindings:
     name: Python bindings (pytest)

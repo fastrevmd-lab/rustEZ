@@ -158,7 +158,7 @@ pub fn unwrap_multi_re(xml: &str) -> Vec<(Option<String>, String)> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
 
                 if name == "multi-routing-engine-item" {
                     in_item = true;
@@ -178,15 +178,12 @@ pub fn unwrap_multi_re(xml: &str) -> Vec<(Option<String>, String)> {
                         item_content.push_str(name);
                         for attr in tag.attributes().flatten() {
                             item_content.push(' ');
-                            item_content
-                                .push_str(std::str::from_utf8(attr.key.as_ref()).unwrap_or(""));
+                            item_content.push_str(attr.key.as_ref());
                             item_content.push_str("=\"");
                             // attr.value is the raw (already entity-escaped)
                             // wire value, so only the double-quote delimiter
                             // needs escaping — never re-escape `&`.
-                            item_content.push_str(
-                                &String::from_utf8_lossy(&attr.value).replace('"', "&quot;"),
-                            );
+                            item_content.push_str(&attr.value.replace('"', "&quot;"));
                             item_content.push('"');
                         }
                         item_content.push('>');
@@ -195,14 +192,15 @@ pub fn unwrap_multi_re(xml: &str) -> Vec<(Option<String>, String)> {
             }
             Ok(Event::Text(ref text)) => {
                 // Since quick-xml 0.38, Text events never contain entity refs
-                // (those arrive as GeneralRef), so decode() handles encoding only.
-                let value = text.decode().unwrap_or_default();
+                // (those arrive as GeneralRef). Since 0.42 the payload is
+                // already `str`, so there is no decode step left at all.
+                let value = &**text;
                 if in_re_name {
                     current_re_name
                         .get_or_insert_with(String::new)
-                        .push_str(&value);
+                        .push_str(value);
                 } else if capturing {
-                    item_content.push_str(&value);
+                    item_content.push_str(value);
                 }
             }
             Ok(Event::GeneralRef(ref entity)) if in_re_name => {
@@ -220,21 +218,21 @@ pub fn unwrap_multi_re(xml: &str) -> Vec<(Option<String>, String)> {
             }
             Ok(Event::Empty(ref tag)) if capturing => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
                 item_content.push('<');
                 item_content.push_str(name);
                 for attr in tag.attributes().flatten() {
                     item_content.push(' ');
-                    item_content.push_str(std::str::from_utf8(attr.key.as_ref()).unwrap_or(""));
+                    item_content.push_str(attr.key.as_ref());
                     item_content.push_str("=\"");
-                    item_content.push_str(&String::from_utf8_lossy(&attr.value));
+                    item_content.push_str(&attr.value);
                     item_content.push('"');
                 }
                 item_content.push_str("/>");
             }
             Ok(Event::End(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
 
                 if name == "re-name" {
                     in_re_name = false;

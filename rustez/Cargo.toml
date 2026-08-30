@@ -8,12 +8,12 @@ license = "MIT"
 repository = "https://github.com/fastrevmd-lab/rustez"
 keywords = ["junos", "juniper", "netconf", "network", "automation"]
 categories = ["network-programming"]
-rust-version = "1.85"
+rust-version = "1.86"
 
 [dependencies]
 rustnetconf = "0.15.0"
 tokio = { version = "1", features = ["full"] }
-quick-xml = "0.41"
+quick-xml = "0.42"
 thiserror = "2"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }

@@ -19,7 +19,7 @@ pub(crate) fn parse_serial_number(xml: &str) -> Option<String> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
                 match name {
                     "chassis" if !in_chassis => {
                         in_chassis = true;
@@ -38,7 +38,7 @@ pub(crate) fn parse_serial_number(xml: &str) -> Option<String> {
             // across Text/GeneralRef events, so accumulate and flush on the
             // closing tag rather than returning on the first Text event.
             Ok(Event::Text(ref text)) if in_serial => {
-                serial.push_str(&text.decode().unwrap_or_default());
+                serial.push_str(text);
             }
             Ok(Event::GeneralRef(ref entity)) if in_serial => {
                 if let Some(resolved) = super::xml_entity::resolve_entity_ref(entity) {
@@ -47,7 +47,7 @@ pub(crate) fn parse_serial_number(xml: &str) -> Option<String> {
             }
             Ok(Event::End(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
                 if name == "serial-number" {
                     in_serial = false;
                     let trimmed = serial.trim();
