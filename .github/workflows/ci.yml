@@ -76,6 +76,21 @@ jobs:
       # 1.98.0 and outranks the `rustup default` that the action sets, so a
       # bare invocation would silently test 1.98 and this job would prove
       # nothing. An explicit +toolchain is the one thing that beats the file.
+      # `Cargo.lock` is gitignored, so this job resolves fresh every run and
+      # takes whatever the registry currently offers. That is what makes it
+      # useful -- a dependency raising its own floor is caught here rather than
+      # downstream -- and also what lets an unrelated release turn every open PR
+      # red with no commit behind it. `aes` 0.9.3 declared `rust-version = 1.89`,
+      # reached through russh -> ssh-key -> aes-gcm -> aes, which makes any floor
+      # below that unsatisfiable. Confirmed against unmodified `main`, which
+      # fails identically at its own declared MSRV.
+      #
+      # Pinning the last compatible release keeps this job measuring *our* floor
+      # rather than the registry's. Drop the pin when it is no longer needed; the
+      # failure names the crate and the version it wants, which is the diagnosis.
+      - name: Pin dependencies that dropped support for the declared MSRV
+        run: cargo update -p aes --precise 0.9.2
+
       - name: cargo check at the declared MSRV
         run: cargo +1.86.0 check -p rustez
 
