@@ -36,18 +36,16 @@ pub(crate) fn parse_route_engines(xml: &str) -> Vec<RouteEngine> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref())
-                    .unwrap_or("")
-                    .to_string();
+                let name = local.as_ref().to_string();
 
                 if name == "route-engine" {
                     in_route_engine = true;
                     let mut engine = RouteEngine::default();
                     // Check for slot attribute
                     for attr in tag.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let key = attr.key.as_ref();
                         if key == "slot" || key.ends_with(":slot") {
-                            if let Ok(slot) = String::from_utf8_lossy(&attr.value).parse::<u32>() {
+                            if let Ok(slot) = attr.value.parse::<u32>() {
                                 engine.slot = Some(slot);
                             }
                         }
@@ -63,7 +61,7 @@ pub(crate) fn parse_route_engines(xml: &str) -> Vec<RouteEngine> {
             // Accumulate across Text/GeneralRef; since quick-xml 0.38 entity
             // refs arrive as separate GeneralRef events. Flush on closing tag.
             Ok(Event::Text(ref text)) if in_route_engine => {
-                text_buf.push_str(&text.decode().unwrap_or_default());
+                text_buf.push_str(text);
             }
             Ok(Event::GeneralRef(ref entity)) if in_route_engine => {
                 if let Some(resolved) = super::xml_entity::resolve_entity_ref(entity) {
@@ -72,7 +70,7 @@ pub(crate) fn parse_route_engines(xml: &str) -> Vec<RouteEngine> {
             }
             Ok(Event::End(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
                 if name == "route-engine" {
                     in_route_engine = false;
                     if let Some(engine) = current_engine.take() {

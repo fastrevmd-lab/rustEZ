@@ -30,9 +30,7 @@ pub(crate) fn parse_software_info(xml: &str) -> SoftwareInfo {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref())
-                    .unwrap_or("")
-                    .to_string();
+                let name = local.as_ref().to_string();
                 match name.as_str() {
                     "package-information" => in_package_info = true,
                     "comment" if in_package_info => in_package_comment = true,
@@ -49,7 +47,7 @@ pub(crate) fn parse_software_info(xml: &str) -> SoftwareInfo {
             // separate GeneralRef events rather than inside Text; the value is
             // flushed and dispatched on the element's closing tag.
             Ok(Event::Text(ref text)) => {
-                text_buf.push_str(&text.decode().unwrap_or_default());
+                text_buf.push_str(text);
             }
             Ok(Event::GeneralRef(ref entity)) => {
                 if let Some(resolved) = super::xml_entity::resolve_entity_ref(entity) {
@@ -58,7 +56,7 @@ pub(crate) fn parse_software_info(xml: &str) -> SoftwareInfo {
             }
             Ok(Event::End(ref tag)) => {
                 let local = tag.local_name();
-                let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                let name = local.as_ref();
                 let value = std::mem::take(&mut text_buf);
                 match name {
                     "host-name" => info.hostname = Some(value),

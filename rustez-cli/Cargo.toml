@@ -11,7 +11,7 @@ publish = false
 
 [dependencies]
 rustez = { path = "../rustez" }
-rustnetconf = "0.15.0"
+rustnetconf = "0.16.2"
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

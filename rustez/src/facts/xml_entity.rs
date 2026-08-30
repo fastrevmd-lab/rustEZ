@@ -18,8 +18,7 @@ pub(crate) fn resolve_entity_ref(entity: &BytesRef<'_>) -> Option<String> {
     if let Ok(Some(ch)) = entity.resolve_char_ref() {
         return Some(ch.to_string());
     }
-    let name = entity.decode().ok()?;
-    quick_xml::escape::resolve_predefined_entity(&name).map(|s| s.to_string())
+    quick_xml::escape::resolve_predefined_entity(entity).map(|s| s.to_string())
 }
 
 /// Reconstruct the raw wire form (`&name;`) of an entity reference.
@@ -29,5 +28,5 @@ pub(crate) fn resolve_entity_ref(entity: &BytesRef<'_>) -> Option<String> {
 /// fragment stays well-formed and round-trips exactly, including user-defined
 /// entities we cannot resolve.
 pub(crate) fn raw_entity_ref(entity: &BytesRef<'_>) -> String {
-    format!("&{};", entity.decode().unwrap_or_default())
+    format!("&{};", &**entity)
 }
