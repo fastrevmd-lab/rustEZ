@@ -229,7 +229,7 @@ Verified on a real device with all integration tests passing:
 | Crate | Version | Purpose |
 |-------|---------|---------|
 | [pyo3](https://crates.io/crates/pyo3) | 0.29 | Python FFI bindings |
-| rustez | 0.15.0 | Core library |
+| rustez | 0.16.0 | Core library |
 | rustnetconf | 0.15 | NETCONF client |
 | tokio | 1 | Async runtime |
 

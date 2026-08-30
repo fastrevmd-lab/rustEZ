@@ -55,8 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CI now verifies the MSRV** (`cargo +1.85.0 check -p rustez`), so the number
-  in `Cargo.toml` is a tested claim rather than a comment.
+- **CI now verifies the MSRV** (`cargo +1.86.0 check -p rustez`), so the number
+  in `Cargo.toml` is a tested claim rather than a comment. The command moved to
+  1.86.0 with the floor, in this same release.
 - **CI now runs `cargo fmt --all -- --check`.** It never had a formatting gate,
   and `main` had drifted across 9 files / 14 hunks. Drift is corrected in this
   change; the gate stops it recurring.
