@@ -11,7 +11,7 @@ categories = ["network-programming"]
 rust-version = "1.86"
 
 [dependencies]
-rustnetconf = "0.15.0"
+rustnetconf = "0.16.2"
 tokio = { version = "1", features = ["full"] }
 quick-xml = "0.42"
 thiserror = "2"
