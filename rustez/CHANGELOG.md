@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-08-30
+
 ### Changed
+
+- **`quick-xml` 0.41 → 0.42.** 0.42 turns XML names, attribute keys and text
+  payloads into `&str` where they were `&[u8]`, so the migration is mechanical
+  but touches every name comparison in the fact parsers: the
+  `str::from_utf8(..).unwrap_or("")` wrapper around each element-name match is
+  gone, `Attribute::value` is `Cow<'a, str>` rather than `Cow<'a, [u8]>`, and
+  `BytesText`/`BytesRef` deref to `str` with no `decode()`.
+
+  **Behaviour is unchanged, and that was measured rather than assumed.** The
+  same probe run against 0.41 and 0.42 — through `parse_serial_number`,
+  `parse_route_engines` and `parse_software_info` — produces byte-identical
+  results for an entity in element text (`JN12&amp;34`), `&lt;`/`&gt;`, a
+  numeric character reference (`&#38;`), non-ASCII, and an attribute value.
+
+- **`rustnetconf` 0.15.0 → 0.16.2.** Required, not incidental: rustnetconf 0.15
+  pins quick-xml 0.41, so bumping only this crate resolved **two** quick-xml
+  versions into the graph — the opposite of the point. `cargo tree -d` now
+  reports no quick-xml entry at all.
+
+- **MSRV 1.85 → 1.86**, because quick-xml 0.42 declares `rust-version = "1.86"`
+  where 0.41 declared 1.79. A real consequence of the bump, so the declared
+  floor and the CI job moved together rather than the job being relaxed to hide
+  it. Verified with `cargo +1.86.0 check -p rustez`.
 
 - **Corrected `rust-version` from `1.79` to `1.85`.** The declared MSRV was
   wrong and had never been tested. `cargo +1.79.0 check -p rustez` fails before
@@ -30,11 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CI now verifies the MSRV** (`cargo +1.85.0 check -p rustez`), so the number
-  in `Cargo.toml` is a tested claim rather than a comment.
+- **CI now verifies the MSRV** (`cargo +1.86.0 check -p rustez`), so the number
+  in `Cargo.toml` is a tested claim rather than a comment. The command moved to
+  1.86.0 with the floor, in this same release.
 - **CI now runs `cargo fmt --all -- --check`.** It never had a formatting gate,
   and `main` had drifted across 9 files / 14 hunks. Drift is corrected in this
   change; the gate stops it recurring.
+- **The MSRV job pins `aes`.** `Cargo.lock` is not committed, so the job
+  resolves fresh every run; `aes` 0.9.3 shipped declaring `rust-version = 1.89`
+  and made any lower floor unsatisfiable. Confirmed against unmodified `main`,
+  which failed identically — the job now measures this crate's floor rather than
+  the registry's current state.
 
 ### Removed
 
@@ -395,6 +426,7 @@ the floor was still `0.14.3`:
   was `AcceptAll`. Since `rustnetconf 0.11` the default has been `RejectAll`
   (fail-closed); the docs now reflect this.
 
+[0.16.0]: https://github.com/fastrevmd-lab/rustez/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/fastrevmd-lab/rustez/compare/v0.14.1...v0.14.2
